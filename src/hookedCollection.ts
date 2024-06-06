@@ -20,6 +20,8 @@ import type {
   FindOptions,
   MongoClient,
   InferIdType,
+  AggregateOptions,
+  AggregationCursor,
 } from 'mongodb';
 import { HookedFindCursor } from "./hookedFindCursor.js";
 
@@ -35,13 +37,14 @@ import {
   HookedEventEmitter,
   InternalEvents,
   internalSymbolToBeforeAfterKey,
+  AggregateCursorEventsSet,
 } from "./events.js";
 import { ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
+import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 
 interface HookedCollectionOptions<T, U> extends CollectionOptions {
   transform?(doc: T): U
 }
-
 
 type TryCatchEmitArgs<TSchema extends Document, U extends any> = {
   insertOne: {
@@ -109,20 +112,102 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     return new MongoDBCollectionNamespace(this.dbName, this.collectionName);
   }
 
-  find<T extends TSchema = TSchema>(filter: Filter<TSchema> = {}, options?: FindOptions): HookedFindCursor<T, U> {
-    return new HookedFindCursor(
-      this.#client,
-      this.getNamespace(),
-      filter,
-      {
-        transform: this.#transform,
-        events: Object.fromEntries(
-          this.#ee.eventNames()
-          .filter(name => FindCursorEventsSet.has(name))
-          .map(name => [name, this.#ee.listeners(name)])
-        ),
-        ...resolveOptions(this, options) }
-    );
+  aggregate<T extends Document>(pipeline: Document[], options?: AggregateOptions): AggregationCursor<T> {
+    const invocationSymbol = Symbol();
+    const [chainedPipeline, chainedOptions] = this.#ee.callSyncChainWithKey("before.aggregate", {
+      args: [pipeline, options],
+      invocationSymbol,
+      thisArg: this
+    }, "args");
+
+    try {
+      let cursor = new HookedAggregationCursor(
+        this.#client,
+        this.getNamespace(),
+        chainedPipeline,
+        {
+          invocationSymbol,
+          events: Object.fromEntries(
+            this.#ee.eventNames()
+            .filter(name => AggregateCursorEventsSet.has(name))
+            .map(name => [name, this.#ee.listeners(name)])
+          ),
+          ...resolveOptions(this, chainedOptions)
+        }
+      ) as HookedAggregationCursor<TSchema>;
+
+      const chainedCursor = this.#ee.callSyncChainWithKey("after.aggregate", {
+        args: [chainedPipeline, chainedOptions],
+        result: cursor,
+        argsOrig: [pipeline, options],
+        thisArg: this,
+        invocationSymbol
+      }, "result");
+      if (chainedCursor !== undefined) {
+        cursor = chainedCursor;
+      }
+
+      return chainedCursor as unknown as HookedAggregationCursor<T>;
+    }
+    catch (e) {
+      this.#ee.callSyncChainWithKey("after.aggregate", {
+        args: [chainedPipeline, chainedOptions],
+        error: e,
+        argsOrig: [pipeline, options],
+        thisArg: this,
+        invocationSymbol
+      }, "result");
+      throw e;
+    }
+  }
+
+  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: FindOptions): HookedFindCursor<T, U> {
+    const invocationSymbol = Symbol();
+    const [chainedFilter, chainedOptions] = this.#ee.callSyncChainWithKey("before.find", {
+      args: [filter, options],
+      thisArg: this,
+      invocationSymbol
+    }, "args");
+    try {
+      // we need as X here because it's hard (impossible) to make the args aware of the custom T used by find vs TSchema of the collection
+      let cursor = new HookedFindCursor(
+        this.#client,
+        this.getNamespace(),
+        chainedFilter,
+        {
+          transform: this.#transform,
+          invocationSymbol,
+          events: Object.fromEntries(
+            this.#ee.eventNames()
+            .filter(name => FindCursorEventsSet.has(name))
+            .map(name => [name, this.#ee.listeners(name)])
+          ),
+          ...resolveOptions(this, chainedOptions)
+        }
+      ) as HookedFindCursor<TSchema, U>;
+
+      const chainedCursor = this.#ee.callSyncChainWithKey("after.find", {
+        args: [chainedFilter, chainedOptions],
+        result: cursor,
+        argsOrig: [filter, options],
+        thisArg: this,
+        invocationSymbol
+      }, "result");
+      if (chainedCursor !== undefined) {
+        cursor = chainedCursor;
+      }
+      return cursor as unknown as HookedFindCursor<T, U>;
+    }
+    catch (e) {
+      this.#ee.callSyncChainWithKey("after.find", {
+        args: [chainedFilter, chainedOptions],
+        error: e,
+        argsOrig: [filter, options],
+        thisArg: this,
+        invocationSymbol
+      }, "result");
+      throw e;
+    }
   }
 
   hasEvents(eventName: EventNames) {
