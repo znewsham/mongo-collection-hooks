@@ -1,15 +1,15 @@
 import { AggregationCursor } from "mongodb";
+import { MongoDBCollectionNamespace } from "mongodb/lib/utils.js";
 import type { AbstractCursorOptions, MongoClient, Document } from "mongodb";
 import { Events, HookedEventEmitter } from "./events.js";
-import { MongoDBCollectionNamespace } from "mongodb/lib/utils.js";
 
 interface HookedAggregateCursorOptions extends AbstractCursorOptions {
   events: Record<string, []>,
   invocationSymbol: symbol,
 }
 
-export class HookedAggregationCursor<TSchema extends Document> extends AggregationCursor<TSchema> {
-  #ee = new HookedEventEmitter<TSchema, any>();
+export class HookedAggregationCursor<TSchema> extends AggregationCursor<TSchema> {
+  #ee = new HookedEventEmitter<TSchema>();
   #aggregateInvocationSymbol: symbol;
 
   constructor(client: MongoClient, namespace: MongoDBCollectionNamespace, pipeline: Document[], {
@@ -113,7 +113,7 @@ export class HookedAggregationCursor<TSchema extends Document> extends Aggregati
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           invocationSymbol
         }
-      )
+      );
       next = await this.#ee.callAwaitableChainWithResult(
         Events.after["aggregate.cursor.next"],
         {
@@ -123,7 +123,7 @@ export class HookedAggregationCursor<TSchema extends Document> extends Aggregati
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           invocationSymbol
         }
-      )
+      );
     }
     catch (err) {
       if (!gotNext) {
@@ -136,7 +136,7 @@ export class HookedAggregationCursor<TSchema extends Document> extends Aggregati
               thisArg: this,
               parentInvocationSymbol: this.#aggregateInvocationSymbol,
               invocationSymbol
-            },
+            }
           ),
           this.#ee.callAwaitableInParallel(
             Events.after["aggregate.cursor.next"],

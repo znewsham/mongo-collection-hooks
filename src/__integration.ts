@@ -3,8 +3,9 @@ import {
 } from "mongodb";
 
 import { HookedCollection, Events } from "../src/index.js";
+import { HookedFindCursor } from "./hookedFindCursor2.js";
 
-const client = new MongoClient(process.env.MONGO_URL, { connectTimeoutMS: 1000, serverSelectionTimeoutMS: 1000, directConnection: true });
+const client = new MongoClient(process.env.MONGO_URL as string, { connectTimeoutMS: 1000, serverSelectionTimeoutMS: 1000, directConnection: true });
 
 const collection = new HookedCollection<{
   name: string,
@@ -16,10 +17,12 @@ const collection = new HookedCollection<{
   }
 }>(client, "dummy");
 
-collection.on("before.delete", ({
-  args,
-  argsOrig,
-  _id
+collection.on("after.find", ({
+  result
 }) => {
-  return 3;
+  const arrayPromise = (result as HookedFindCursor<{ name: string }>)?.toArray();
+  if (!arrayPromise) {
+    return;
+  }
+  arrayPromise.then(([{ name }]) => { console.log(name)});
 });

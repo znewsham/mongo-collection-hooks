@@ -21,17 +21,25 @@ import {
 } from "mongodb"
 import { HookedCollection } from "./hookedCollection.js"
 import { HookedFindCursor } from "./hookedFindCursor.js";
-import { ChainedAwaiatableEventEmitter } from "./awaiatableEventEmitter.js";
+import { ChainedAwaiatableEventEmitter, ChainedCallbackEventMap, ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
 import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ThisArg } from "./commentedTypes.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 
-export type InsertOneCallArgs<TSchema extends Document> = readonly [OptionalUnlessRequiredId<TSchema>, InsertOneOptions | undefined];
-type FindCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, FindOptions<TSchema> | undefined];
+
+export type InsertOneCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>, InsertOneOptions | undefined];
+type FindCallArgs<TSchema> = readonly [Filter<TSchema>, FindOptions<TSchemaOrDocument<TSchema>> | undefined];
 type AggregateCallArgs = readonly [Document[], AggregateOptions | undefined];
-type InsertManyCallArgs<TSchema extends Document> = readonly [OptionalUnlessRequiredId<TSchema>[], BulkWriteOptions | undefined];
-type UpdateCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, UpdateFilter<TSchema> | Partial<TSchema>, UpdateOptions | undefined];
-type DeleteCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, DeleteOptions | undefined];
-type DistinctCallArgs<TSchema extends Document> = readonly [keyof WithId<TSchema>, Filter<TSchema>, DistinctOptions];
+type InsertManyCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>[], BulkWriteOptions | undefined];
+type UpdateCallArgs<TSchema> = readonly [Filter<TSchema>, UpdateFilter<TSchema> | Partial<TSchema>, UpdateOptions | undefined];
+type DeleteCallArgs<TSchema> = readonly [Filter<TSchema>, DeleteOptions | undefined];
+type DistinctCallArgs<TSchema> = readonly [keyof WithId<TSchema>, Filter<TSchema>, DistinctOptions];
+type TSchemaOrDocument<T> = T extends Document ? T : Document;
+
+type ReturnsNamedEmitArg<O extends {emitArgs: {[k in Key]: any}, isPromise?: boolean}, Key extends string> = O & {
+  returns: O["emitArgs"][Key],
+  returnEmitName: Key,
+  isPromise: O["isPromise"] extends false ? false : true
+}
 
 type ReturnsArgs<O extends {args: O["args"], isPromise?: boolean}> = O & {
   returns: O["args"],
@@ -43,17 +51,11 @@ type ReturnsResult<O extends {result: O["result"], isPromise?: boolean}> = O & {
   returnEmitName: "result",
   isPromise: O["isPromise"] extends false ? false : true
 }
-type ReturnsNamedEmitArg<O extends {emitArgs: {[k in Key]: any}, isPromise?: boolean}, Key extends string> = O & {
-  returns: O["emitArgs"][Key],
-  returnEmitName: Key,
-  isPromise: O["isPromise"] extends false ? false : true
-}
 type NoReturns<O extends { isPromise?: boolean }> = O & {
   returns: [],
   returnEmitName: never,
   isPromise: O["isPromise"] extends false ? false : true
 }
-
 
 type AfterTopLevelEmitArgs<O extends CommonDefinition> = O & {
   hasOrigResult: true,
@@ -110,7 +112,7 @@ type CommonDefinition = {
 };
 
 type CommonDefinitionWithCaller = CommonDefinition & {
-  caller: keyof BeforeAfterEventDefinitions<Document, any>
+  caller: BeforeAfterEventNames
 }
 
 type TopLevelCall<O extends CommonDefinition> = {
@@ -119,10 +121,10 @@ type TopLevelCall<O extends CommonDefinition> = {
   caller: never
 };
 
-type InsertCommon<TSchema extends Document> = {
+type InsertCommon<TSchema, This> = {
   caller: "insertOne" | "insertMany",
   args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema>,
-  thisArg: HookedCollection<TSchema>,
+  thisArg: This,
   result: InsertOneResult<TSchema>,
   custom: {
     /** The document to be inserted */
@@ -131,10 +133,10 @@ type InsertCommon<TSchema extends Document> = {
   isPromise: true
 }
 
-type DeleteCommon<TSchema extends Document> = {
+type DeleteCommon<TSchema, This> = {
   caller: "deleteOne" | "deleteMany",
   args: DeleteCallArgs<TSchema>,
-  thisArg: HookedCollection<TSchema>,
+  thisArg: This,
   result: DeleteResult,
   custom: {
     /** The ID of the document to be deleted */
@@ -145,10 +147,10 @@ type DeleteCommon<TSchema extends Document> = {
   isPromise: true
 }
 
-type UpdateCommon<TSchema extends Document> = {
+type UpdateCommon<TSchema, This> = {
   caller: "updateOne" | "updateMany",
   args: UpdateCallArgs<TSchema>,
-  thisArg: HookedCollection<TSchema>,
+  thisArg: This,
   result: UpdateResult,
   custom: {
 
@@ -158,9 +160,9 @@ type UpdateCommon<TSchema extends Document> = {
 
 
 type CursorParams<
-  TSchema extends Document,
+  TSchema,
   HookedCursorType,
-  CO extends { caller: keyof BeforeAfterEventDefinitions<TSchema, any> },
+  CO extends { caller: keyof BeforeAfterEventDefinitions<TSchema> },
   O extends CommonDefinition = {
     args: never,
     thisArg: HookedCursorType,
@@ -179,9 +181,9 @@ type CursorParams<
   caller: CO["caller"]
 };
 type CursorParamsWithResult<
-  TSchema extends Document,
+  TSchema,
   HookedCursorType,
-  CO extends { caller: keyof BeforeAfterEventDefinitions<TSchema, any>, result: any },
+  CO extends { caller: keyof BeforeAfterEventDefinitions<TSchema>, result: any },
   O extends CommonDefinition = {
     args: never,
     thisArg: HookedCursorType
@@ -199,9 +201,9 @@ type CursorParamsWithResult<
 };
 
 type CursorParamsWithArgsAndResult<
-  TSchema extends Document,
+  TSchema,
   HookedCursorType,
-  CO extends { caller: keyof BeforeAfterEventDefinitions<TSchema, any>, result: any, args: any, isPromise?: boolean },
+  CO extends { caller: keyof BeforeAfterEventDefinitions<TSchema>, result: any, args: any, isPromise?: boolean },
   O extends CommonDefinition = {
     thisArg: HookedCursorType
   } & CO
@@ -213,68 +215,68 @@ type CursorParamsWithArgsAndResult<
   caller: CO["caller"]
 };
 
-export type BeforeAfterEventDefinitions<TSchema extends Document, U> = {
-  "cursor.execute": CursorParams<TSchema, HookedFindCursor<TSchema> | HookedAggregationCursor<TSchema>, {
+export type BeforeAfterEventDefinitions<TSchema, This = any> = {
+  "cursor.execute": CursorParams<TSchema, HookedFindCursor<any> | HookedAggregationCursor<TSchema>, {
     caller: "find" | "aggregate" | "find.cursor.toArray" | "find.cursor.count" | "find.cursor.forEach" | "find.cursor.asyncIterator" | "cursor.asyncIterator",
   }>
-  "cursor.next": CursorParamsWithResult<TSchema, HookedFindCursor<TSchema> | HookedAggregationCursor<TSchema>, {
+  "cursor.next": CursorParamsWithResult<TSchema, HookedFindCursor<any> | HookedAggregationCursor<TSchema>, {
     caller: "find" | "aggregate" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.asyncIterator" | "cursor.asyncIterator",
-    result: TSchema | U | null
+    result: TSchema | null
   }>,
-  "cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedFindCursor<TSchema>, {
+  "cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedFindCursor<any>, {
     caller: "find" | "aggregate",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
   }>,
-  "cursor.asyncIterator": CursorParams<TSchema, HookedFindCursor<TSchema>, {
+  "cursor.asyncIterator": CursorParams<TSchema, HookedFindCursor<any>, {
     caller: "find" | "aggregate",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
   }>,
-  "find.cursor.execute": CursorParams<TSchema, HookedFindCursor<TSchema>, {
+  "find.cursor.execute": CursorParams<TSchema, HookedFindCursor<any>, {
     caller: "find" | "find.cursor.toArray" | "find.cursor.count" | "find.cursor.forEach" | "find.cursor.asyncIterator"
   }>,
-  "find.cursor.next": CursorParamsWithResult<TSchema, HookedFindCursor<TSchema>, {
+  "find.cursor.next": CursorParamsWithResult<TSchema, HookedFindCursor<any>, {
     caller: "find" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.asyncIterator",
-    result: TSchema | U | null
+    result: TSchema | null
   }>,
-  "find.cursor.toArray": CursorParamsWithResult<TSchema, HookedFindCursor<TSchema>, {
+  "find.cursor.toArray": CursorParamsWithResult<TSchema, HookedFindCursor<any>, {
     caller: "find",
-    result: TSchema[] | U[]
+    result: TSchema[]
   }>,
-  "find.cursor.count": CursorParamsWithArgsAndResult<TSchema, HookedFindCursor<TSchema>, {
+  "find.cursor.count": CursorParamsWithArgsAndResult<TSchema, HookedFindCursor<any>, {
     caller: "find",
     result: number,
     args: [CountOptions | undefined]
   }>,
-  "find.cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedFindCursor<TSchema>, {
+  "find.cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedFindCursor<any>, {
     caller: "find",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
   }>,
-  "find.cursor.asyncIterator": CursorParams<TSchema, HookedFindCursor<TSchema>, {
+  "find.cursor.asyncIterator": CursorParams<TSchema, HookedFindCursor<any>, {
     caller: "find",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
   }>,
 
-  "aggregate.cursor.execute": CursorParams<TSchema, HookedAggregationCursor<TSchema>, {
+  "aggregate.cursor.execute": CursorParams<TSchema, HookedAggregationCursor<any>, {
     caller: "aggregate"
   }>,
-  "aggregate.cursor.next": CursorParamsWithResult<TSchema, HookedAggregationCursor<TSchema>, {
+  "aggregate.cursor.next": CursorParamsWithResult<TSchema, HookedAggregationCursor<any>, {
     caller: "aggregate",
-    result: TSchema | U | null
+    result: TSchema | null
   }>,
-  "aggregate.cursor.toArray": CursorParamsWithResult<TSchema, HookedAggregationCursor<TSchema>, {
+  "aggregate.cursor.toArray": CursorParamsWithResult<TSchema, HookedAggregationCursor<any>, {
     caller: "aggregate",
-    result: TSchema[] | U[]
+    result: TSchema[]
   }>,
-  "aggregate.cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedAggregationCursor<TSchema>, {
+  "aggregate.cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedAggregationCursor<any>, {
     caller: "find",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
   }>,
-  "aggregate.cursor.asyncIterator": CursorParams<TSchema, HookedAggregationCursor<TSchema>, {
+  "aggregate.cursor.asyncIterator": CursorParams<TSchema, HookedAggregationCursor<any>, {
     caller: "find",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
@@ -282,112 +284,116 @@ export type BeforeAfterEventDefinitions<TSchema extends Document, U> = {
 
   aggregate: TopLevelCall<{
     args: AggregateCallArgs,
-    thisArg: HookedCollection<TSchema>,
-    result: HookedAggregationCursor<TSchema>,
+    thisArg: This,
+    result: HookedAggregationCursor<any>,
     isPromise: false
   }>,
   find: TopLevelCall<{
     args: FindCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
-    result: HookedFindCursor<TSchema, U>,
+    thisArg: This,
+    result: HookedFindCursor<any>,
     isPromise: false
   }>,
   insertOne: TopLevelCall<{
     args: InsertOneCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: InsertOneResult<TSchema>,
   }>
   insertMany: TopLevelCall<{
     args: InsertManyCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: InsertManyResult<TSchema>,
   }>,
   insert: {
-    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<InsertCommon<TSchema>>, "doc">,
-    after: NoReturns<AfterInternalEmitArgs<InsertCommon<TSchema>>>,
+    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<InsertCommon<TSchema, This>>, "doc">,
+    after: NoReturns<AfterInternalEmitArgs<InsertCommon<TSchema, This>>>,
     caller: "insertOne" | "insertMany",
   },
   deleteOne: TopLevelCall<{
     args: DeleteCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: DeleteResult
   }>,
   delete: {
-    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<DeleteCommon<TSchema>>, "filter">,
-    after: NoReturns<AfterInternalEmitArgs<DeleteCommon<TSchema>>>,
+    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<DeleteCommon<TSchema, This>>, "filter">,
+    after: NoReturns<AfterInternalEmitArgs<DeleteCommon<TSchema, This>>>,
     caller: "deleteOne" | "deleteMany",
   },
   deleteMany: TopLevelCall<{
     args: DeleteCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: DeleteResult
   }>,
   updateOne: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: UpdateResult
   }>,
   updateMany: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: UpdateResult
   }>,
   update: {
-    before: ReturnsArgs<BeforeInternalEmitArgs<UpdateCommon<TSchema>>>,
-    after: NoReturns<AfterInternalEmitArgs<UpdateCommon<TSchema>>>,
+    before: ReturnsArgs<BeforeInternalEmitArgs<UpdateCommon<TSchema, This>>>,
+    after: NoReturns<AfterInternalEmitArgs<UpdateCommon<TSchema, This>>>,
     caller: "updateOne" | "updateMany",
   },
   distinct: TopLevelCall<{
     args: DistinctCallArgs<TSchema>,
-    thisArg: HookedCollection<TSchema>,
+    thisArg: This,
     result: any[]
   }>
 }
 
-export type CallerType<k extends keyof BeforeAfterEventDefinitions<Document, any> = keyof BeforeAfterEventDefinitions<Document, any>> = BeforeAfterEventDefinitions<Document, any>[k]["caller"]
+export type BeforeAfterEventNames<limit extends keyof BeforeAfterEventDefinitions<Document> = keyof BeforeAfterEventDefinitions<Document>> = keyof BeforeAfterEventDefinitions<Document> & limit;
 
-type BeforeEventDefinitions<TSchema extends Document, U extends any> = {
-  [k in keyof BeforeAfterEventDefinitions<TSchema, U> as `before.${k}`]: BeforeAfterEventDefinitions<TSchema, U>[k]["before"]
+export type CallerType<k extends BeforeAfterEventNames = BeforeAfterEventNames> = BeforeAfterEventDefinitions<Document>[k]["caller"]
+
+type BeforeEventDefinitions<TSchema, This> = {
+  [k in BeforeAfterEventNames as `before.${k}`]: BeforeAfterEventDefinitions<TSchema, This>[k]["before"]
 }
 
-type AfterEventDefinitions<TSchema extends Document, U extends any> = {
-  [k in keyof BeforeAfterEventDefinitions<TSchema, U> as `after.${k}`]: BeforeAfterEventDefinitions<TSchema, U>[k]["after"]
+type AfterEventDefinitions<TSchema, This> = {
+  [k in BeforeAfterEventNames as `after.${k}`]: BeforeAfterEventDefinitions<TSchema, This>[k]["after"]
 }
 
-export type EventDefinitions<TSchema extends Document, U> = BeforeEventDefinitions<TSchema, U> & AfterEventDefinitions<TSchema, U>;
+export type EventDefinitions<TSchema, This> = BeforeEventDefinitions<TSchema, This> & AfterEventDefinitions<TSchema, This>;
 
-export type EventNames = keyof EventDefinitions<Document, any>;
-export type BeforeEventNames = keyof BeforeEventDefinitions<Document, any>;
-export type AfterEventNames = keyof AfterEventDefinitions<Document, any>;
+export type EventNames<limit extends keyof EventDefinitions<Document, any> = keyof EventDefinitions<Document, any>> = keyof EventDefinitions<Document, any> & limit;
+export type BeforeEventNames<limit extends EventNames = keyof BeforeEventDefinitions<Document, any>> = keyof BeforeEventDefinitions<Document, any> & limit;
+export type AfterEventNames<limit extends EventNames = keyof AfterEventDefinitions<Document, any>> = keyof AfterEventDefinitions<Document, any> & limit;
 
-type BeforeCallbackArgsAndReturn<TSchema extends Document, U extends any> = {
-  [k in keyof BeforeEventDefinitions<TSchema, U>]: {
+type BeforeCallbackArgsAndReturn<TSchema, This> = {
+  [k in BeforeEventNames]: {
     callbackArgs:
     {
       /** The original arguments before any hook was applied */
-      [rek in BeforeEventDefinitions<TSchema, U>[k]["returnEmitName"] as `${rek}Orig`]: BeforeEventDefinitions<TSchema, U>[k]["returns"]
-    } & BeforeEventDefinitions<TSchema, U>[k]["emitArgs"],
-    emitArgs: BeforeEventDefinitions<TSchema, U>[k]["emitArgs"],
-    returns: BeforeEventDefinitions<TSchema, U>[k]["returns"],
-    isPromise: BeforeEventDefinitions<TSchema, U>[k]["isPromise"]
+      [rek in BeforeEventDefinitions<TSchema, This>[k]["returnEmitName"] as `${rek}Orig`]: BeforeEventDefinitions<TSchema, This>[k]["returns"]
+    } & BeforeEventDefinitions<TSchema, This>[k]["emitArgs"],
+    emitArgs: BeforeEventDefinitions<TSchema, This>[k]["emitArgs"],
+    returns: BeforeEventDefinitions<TSchema, This>[k]["returns"],
+    isPromise: BeforeEventDefinitions<TSchema, This>[k]["isPromise"]
   }
 }
 
-type AfterCallbackArgsAndReturn<TSchema extends Document, U extends any> = {
-  [k in keyof AfterEventDefinitions<TSchema, U>]: {
+type AfterCallbackArgsAndReturn<TSchema, This> = {
+  [k in AfterEventNames]: {
     callbackArgs:
     {
-      [rek in AfterEventDefinitions<TSchema, U>[k]["returnEmitName"] as `${rek}Orig`]: AfterEventDefinitions<TSchema, U>[k]["returns"]
-    } & AfterEventDefinitions<TSchema, U>[k]["emitArgs"],
-    emitArgs: AfterEventDefinitions<TSchema, U>[k]["emitArgs"],
-    returns: AfterEventDefinitions<TSchema, U>[k]["returns"],
-    isPromise: AfterEventDefinitions<TSchema, U>[k]["isPromise"]
+      [rek in AfterEventDefinitions<TSchema, This>[k]["returnEmitName"] as `${rek}Orig`]: AfterEventDefinitions<TSchema, This>[k]["returns"]
+    } & AfterEventDefinitions<TSchema, This>[k]["emitArgs"],
+    emitArgs: AfterEventDefinitions<TSchema, This>[k]["emitArgs"],
+    returns: AfterEventDefinitions<TSchema, This>[k]["returns"],
+    isPromise: AfterEventDefinitions<TSchema, This>[k]["isPromise"]
   }
 }
 
-export type HookedEventMap<TSchema extends Document, U> = BeforeCallbackArgsAndReturn<TSchema, U> & AfterCallbackArgsAndReturn<TSchema, U>
+export type HookedEventMap<TSchema, This> = BeforeCallbackArgsAndReturn<TSchema, This> & AfterCallbackArgsAndReturn<TSchema, This>
+export type HookedListenerCallback<K extends EventNames, TSchema, This> = ListenerCallback<K, ConvertCallbackArgsToArgs<HookedEventMap<TSchema, This>>>
 
-export class HookedEventEmitter<TSchema extends Document, U extends any> extends ChainedAwaiatableEventEmitter<HookedEventMap<TSchema, U>> {
+
+export class HookedEventEmitter<HEM extends ChainedCallbackEventMap> extends ChainedAwaiatableEventEmitter<HEM> {
 }
 
 
@@ -435,20 +441,29 @@ const beforeAfterEvents = [
 
 
 export const Events: {
-  before: { [k in keyof BeforeAfterEventDefinitions<Document, any>]: `before.${k}`},
-  after: { [k in keyof BeforeAfterEventDefinitions<Document, any>]: `after.${k}`}
+  before: { [k in BeforeAfterEventNames]: `before.${k}`},
+  after: { [k in BeforeAfterEventNames]: `after.${k}`}
 } = {
-  before: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `before.${key}`])) as { [k in keyof BeforeAfterEventDefinitions<Document, any>]: `before.${k}`},
-  after: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `after.${key}`])) as { [k in keyof BeforeAfterEventDefinitions<Document, any>]: `after.${k}`}
+  before: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `before.${key}`])) as { [k in keyof BeforeAfterEventDefinitions<Document>]: `before.${k}`},
+  after: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `after.${key}`])) as { [k in keyof BeforeAfterEventDefinitions<Document>]: `after.${k}`}
 }
 
-export const InternalEvents = Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, key])) as { [k in keyof BeforeAfterEventDefinitions<Document, any>]: k};
+export const InternalEvents = Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, key])) as { [k in keyof BeforeAfterEventDefinitions<Document>]: k};
 
 export function internalSymbolToBeforeAfterKey<
-  K extends keyof BeforeAfterEventDefinitions<Document, any>
->(key: K): { before: EventNames & `before.${K}`, after: EventNames & `after.${K}` } {
+  K extends BeforeAfterEventNames
+>(key: K): { before: BeforeEventNames & `before.${K}`, after: AfterEventNames & `after.${K}` } {
   return {
-    before: `before.${key}` as (EventNames & `before.${K}`),
-    after: `after.${key}` as (EventNames & `after.${K}`)
+    before: `before.${key}` as (BeforeEventNames & `before.${K}`),
+    after: `after.${key}` as (AfterEventNames & `after.${K}`)
   }
 }
+
+
+
+export function assertCaller<
+  IE extends BeforeAfterEventNames
+>(caller: CallerType, internalEvent: IE): asserts caller is CallerType<typeof internalEvent> {
+
+}
+

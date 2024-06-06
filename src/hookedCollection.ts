@@ -38,73 +38,74 @@ import {
   InternalEvents,
   internalSymbolToBeforeAfterKey,
   AggregateCursorEventsSet,
+  HookedListenerCallback,
 } from "./events.js";
 import { ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 
-interface HookedCollectionOptions<T, U> extends CollectionOptions {
-  transform?(doc: T): U
+interface HookedCollectionOptions<T> extends CollectionOptions {
+  transform?(doc: T): any
 }
 
-type TryCatchEmitArgs<TSchema extends Document, U extends any> = {
+type TryCatchEmitArgs<TSchema, This> = {
   insertOne: {
-    args: EventDefinitions<TSchema, U>["before.insertOne"]["args"]
+    args: EventDefinitions<TSchema, This>["before.insertOne"]["args"]
   }
   insertMany: {
-    args: EventDefinitions<TSchema, U>["before.insertMany"]["args"]
+    args: EventDefinitions<TSchema, This>["before.insertMany"]["args"]
   }
   insert: {
-    argsOrig: EventDefinitions<TSchema, U>["before.insertOne"]["args"] | EventDefinitions<TSchema, U>["before.insertMany"]["args"]
-    args: EventDefinitions<TSchema, U>["before.insert"]["args"],
-    caller: EventDefinitions<TSchema, U>["before.insert"]["caller"],
+    argsOrig: EventDefinitions<TSchema, This>["before.insertOne"]["args"] | EventDefinitions<TSchema, This>["before.insertMany"]["args"]
+    args: EventDefinitions<TSchema, This>["before.insert"]["args"],
+    caller: EventDefinitions<TSchema, This>["before.insert"]["caller"],
     invocationSymbol: symbol
     doc: any
   }
   updateOne: {
-    args: EventDefinitions<TSchema, U>["before.updateOne"]["args"]
+    args: EventDefinitions<TSchema, This>["before.updateOne"]["args"]
   }
   updateMany: {
-    args: EventDefinitions<TSchema, U>["before.updateMany"]["args"]
+    args: EventDefinitions<TSchema, This>["before.updateMany"]["args"]
   }
   update: {
-    argsOrig: EventDefinitions<TSchema, U>["before.updateOne"]["args"] | EventDefinitions<TSchema, U>["before.deleteMany"]["args"]
-    args: EventDefinitions<TSchema, U>["before.updateOne"]["args"],
-    caller: EventDefinitions<TSchema, U>["before.update"]["caller"],
+    argsOrig: EventDefinitions<TSchema, This>["before.updateOne"]["args"] | EventDefinitions<TSchema, This>["before.deleteMany"]["args"]
+    args: EventDefinitions<TSchema, This>["before.updateOne"]["args"],
+    caller: EventDefinitions<TSchema, This>["before.update"]["caller"],
     invocationSymbol: symbol
     docId: InferIdType<TSchema>
   }
   deleteOne: {
-    args: EventDefinitions<TSchema, U>["before.deleteOne"]["args"]
+    args: EventDefinitions<TSchema, This>["before.deleteOne"]["args"]
   }
   deleteMany: {
-    args: EventDefinitions<TSchema, U>["before.deleteMany"]["args"]
+    args: EventDefinitions<TSchema, This>["before.deleteMany"]["args"]
   }
   delete: {
-    argsOrig: EventDefinitions<TSchema, U>["before.deleteOne"]["args"] | EventDefinitions<TSchema, U>["before.deleteMany"]["args"]
-    args: EventDefinitions<TSchema, U>["before.delete"]["args"],
-    caller: EventDefinitions<TSchema, U>["before.delete"]["caller"],
+    argsOrig: EventDefinitions<TSchema, This>["before.deleteOne"]["args"] | EventDefinitions<TSchema, This>["before.deleteMany"]["args"]
+    args: EventDefinitions<TSchema, This>["before.delete"]["args"],
+    caller: EventDefinitions<TSchema, This>["before.delete"]["caller"],
     invocationSymbol: symbol
     docId: InferIdType<TSchema>
   },
   distinct: {
-    args: EventDefinitions<TSchema, U>["before.distinct"]["args"]
+    args: EventDefinitions<TSchema, This>["before.distinct"]["args"]
   }
 }
 
 
 export class HookedCollection<TSchema extends Document, U = any> extends Collection<TSchema> {
   static Events = Events;
-  #transform?: (doc: TSchema) => U;
-  #ee = new HookedEventEmitter<TSchema, U>();
+  // #transform?: (doc: TSchema) => any;
+  #ee = new HookedEventEmitter<HookedEventMap<TSchema, typeof this>>();
   #client: MongoClient;
 
   constructor(client: MongoClient, collectionName: string, {
     transform,
     ...options
-  }: HookedCollectionOptions<TSchema, U> = {}) {
+  }: HookedCollectionOptions<TSchema> = {}) {
     // @ts-expect-error
     super(client.db(), collectionName, options);
-    this.#transform = transform;
+    // this.#transform = transform;
     this.#client = client;
   }
 
@@ -161,7 +162,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     }
   }
 
-  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: FindOptions): HookedFindCursor<T, U> {
+  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: FindOptions): HookedFindCursor<T> {
     const invocationSymbol = Symbol();
     const [chainedFilter, chainedOptions] = this.#ee.callSyncChainWithKey("before.find", {
       args: [filter, options],
@@ -169,22 +170,22 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
       invocationSymbol
     }, "args");
     try {
+      const actualCursor = super.find<T>(chainedFilter, chainedOptions);
+
       // we need as X here because it's hard (impossible) to make the args aware of the custom T used by find vs TSchema of the collection
       let cursor = new HookedFindCursor(
-        this.#client,
-        this.getNamespace(),
         chainedFilter,
+        actualCursor,
         {
-          transform: this.#transform,
+          // transform: this.#transform,
           invocationSymbol,
           events: Object.fromEntries(
             this.#ee.eventNames()
             .filter(name => FindCursorEventsSet.has(name))
-            .map(name => [name, this.#ee.listeners(name)])
-          ),
-          ...resolveOptions(this, chainedOptions)
+            .map(name => [name, this.#ee.awaitableListeners(name)])
+          ) as Record<string, HookedListenerCallback<EventNames & typeof FindCursorEventsSet, TSchema, typeof this>>
         }
-      ) as HookedFindCursor<TSchema, U>;
+      ) as HookedFindCursor<T>;
 
       const chainedCursor = this.#ee.callSyncChainWithKey("after.find", {
         args: [chainedFilter, chainedOptions],
@@ -196,7 +197,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
       if (chainedCursor !== undefined) {
         cursor = chainedCursor;
       }
-      return cursor as unknown as HookedFindCursor<T, U>;
+      return cursor as unknown as HookedFindCursor<T>;
     }
     catch (e) {
       this.#ee.callSyncChainWithKey("after.find", {
@@ -214,9 +215,9 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     return this.#ee.listenerCount(eventName) !== 0;
   }
   async #tryCatchEmit<
-    T extends (callArgs: { beforeHooksResult: BeforeAfterEventDefinitions<TSchema, U>[IE]["before"]["returns"], invocationSymbol: symbol }) => Promise<any>,
-    IE extends keyof BeforeAfterEventDefinitions<TSchema, U> & keyof TryCatchEmitArgs<TSchema, U>,
-    EA extends TryCatchEmitArgs<TSchema, U>[IE]
+    T extends (callArgs: { beforeHooksResult: BeforeAfterEventDefinitions<TSchema>[IE]["before"]["returns"], invocationSymbol: symbol }) => Promise<any>,
+    IE extends keyof BeforeAfterEventDefinitions<TSchema> & keyof TryCatchEmitArgs<TSchema, typeof this>,
+    EA extends TryCatchEmitArgs<TSchema, typeof this>[IE]
   >(
     internalEvent: IE,
     fn: T,
@@ -238,7 +239,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
         thisArg: this,
         ...(parentInvocationSymbol && { parentInvocationSymbol }),
         ...(argsOrig && { args: argsOrig, argsOrig }),
-      }) as BeforeAfterEventDefinitions<TSchema, U>[IE]["before"]["args"];
+      }) as BeforeAfterEventDefinitions<TSchema>[IE]["before"]["args"];
     }
     const afterCount = this.#ee.listenerCount(afterEvent);
     if (!afterCount) {
@@ -261,7 +262,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
         invocationSymbol,
         args: argsToUse,
         thisArg: this
-      } as BeforeAfterEventDefinitions<TSchema, U>[IE]["after"]["emitArgs"]);
+      } as BeforeAfterEventDefinitions<TSchema>[IE]["after"]["emitArgs"]);
       return result;
     }
     catch (e) {
@@ -273,7 +274,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
           args: argsToUse,
           argsOrig,
           thisArg: this
-        } as BeforeAfterEventDefinitions<TSchema, U>[IE]["after"]["emitArgs"]);
+        } as BeforeAfterEventDefinitions<TSchema>[IE]["after"]["emitArgs"]);
       }
       throw e;
     }
@@ -498,18 +499,18 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     );
   }
 
-  on<K extends keyof HookedEventMap<TSchema, U>>(
+  on<K extends keyof HookedEventMap<TSchema, typeof this>>(
     eventName: K,
-    listener: ListenerCallback<K, ConvertCallbackArgsToArgs<HookedEventMap<TSchema, U>>>
+    listener: HookedListenerCallback<K, TSchema, typeof this>
   ) {
     return this.#ee.awaitableOn(eventName, listener);
   }
 
   off<
-    K extends keyof HookedEventMap<TSchema, U> & keyof EventDefinitions<TSchema, U>
+    K extends keyof HookedEventMap<TSchema, typeof this> & EventNames
   >(
     eventName: K,
-    listener: ListenerCallback<K, ConvertCallbackArgsToArgs<HookedEventMap<TSchema, U>>>
+    listener: HookedListenerCallback<K, TSchema, typeof this>
   ) {
     return this.#ee.awaitableOff(eventName, listener);
   }
