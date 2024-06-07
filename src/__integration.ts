@@ -15,14 +15,4 @@ const collection = new HookedCollection<{
       inner: number
     }[]
   }
-}>(client, "dummy");
-
-collection.on("after.find", ({
-  result
-}) => {
-  const arrayPromise = (result as HookedFindCursor<{ name: string }>)?.toArray();
-  if (!arrayPromise) {
-    return;
-  }
-  arrayPromise.then(([{ name }]) => { console.log(name)});
-});
+}>(client.db().collection("dummy"));

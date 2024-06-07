@@ -63,11 +63,11 @@ export class ChainedAwaiatableEventEmitter<
   }
 > extends AwaiatableEventEmitter<SUPEM> {
 
-  #callSyncChainWithKey<K extends keyof SUPEM & keyof EM & keyof SYNCEM>(
+  #callSyncChainWithKey<K extends keyof SUPEM & keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"]>(
     eventName: Key<K, SUPEM>,
     emitArgs: EM[K]["emitArgs"],
-    chainKey: string,
-    origChainedValue
+    chainKey: CK,
+    origChainedValue: EM[K]["emitArgs"][CK]
   ): EM[K]["returns"] {
     const origKey = `${chainKey}Orig`;
     const {
@@ -99,6 +99,14 @@ export class ChainedAwaiatableEventEmitter<
     chainKey: string
   ): EM[K]["returns"] {
     return this.#callSyncChainWithKey(eventName, emitArgs, chainKey, emitArgs[chainKey]);
+  }
+
+  callSyncChain<K extends keyof SUPEM & keyof EM & keyof SYNCEM>(
+    eventName: Key<K, SUPEM> & K, // weird - but this is what enforces the keyof SYNCEM
+    emitArgs: EM[K]["emitArgs"]
+  ): void {
+    const listeners = this.awaitableListeners(eventName as Key<K, SUPEM>);
+    listeners.forEach(listener => listener(emitArgs));
   }
 
   callAllSyncChainWithKey<MK extends keyof SUPEM & keyof EM & keyof SYNCEM, K extends keyof SUPEM & keyof EM & keyof SYNCEM>(

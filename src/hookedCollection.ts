@@ -1,12 +1,6 @@
-import {
-  Collection,
-  Document
-} from "mongodb";
-
-import { resolveOptions, MongoDBCollectionNamespace } from "mongodb/lib/utils.js";
-
 import type {
-  CollectionOptions,
+  Collection,
+  Document,
   InsertOneOptions,
   OptionalUnlessRequiredId,
   WithId,
@@ -18,99 +12,40 @@ import type {
   BulkWriteOptions,
   DeleteOptions,
   FindOptions,
-  MongoClient,
-  InferIdType,
+  UpdateResult,
+  ReplaceOptions,
+  WithoutId,
+  CountOptions,
   AggregateOptions,
   AggregationCursor,
 } from 'mongodb';
 import { HookedFindCursor } from "./hookedFindCursor.js";
 
 import {
-  AfterEventNames,
-  BeforeAfterEventDefinitions,
-  BeforeEventNames,
-  EventDefinitions,
+  BeforeAfterErrorEventDefinitions,
   HookedEventMap,
   EventNames,
   Events,
   FindCursorEventsSet,
   HookedEventEmitter,
   InternalEvents,
-  internalSymbolToBeforeAfterKey,
-  AggregateCursorEventsSet,
   HookedListenerCallback,
+  AggregateCursorEventsSet,
 } from "./events.js";
-import { ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
-
-interface HookedCollectionOptions<T> extends CollectionOptions {
-  transform?(doc: T): any
-}
-
-type TryCatchEmitArgs<TSchema, This> = {
-  insertOne: {
-    args: EventDefinitions<TSchema, This>["before.insertOne"]["args"]
-  }
-  insertMany: {
-    args: EventDefinitions<TSchema, This>["before.insertMany"]["args"]
-  }
-  insert: {
-    argsOrig: EventDefinitions<TSchema, This>["before.insertOne"]["args"] | EventDefinitions<TSchema, This>["before.insertMany"]["args"]
-    args: EventDefinitions<TSchema, This>["before.insert"]["args"],
-    caller: EventDefinitions<TSchema, This>["before.insert"]["caller"],
-    invocationSymbol: symbol
-    doc: any
-  }
-  updateOne: {
-    args: EventDefinitions<TSchema, This>["before.updateOne"]["args"]
-  }
-  updateMany: {
-    args: EventDefinitions<TSchema, This>["before.updateMany"]["args"]
-  }
-  update: {
-    argsOrig: EventDefinitions<TSchema, This>["before.updateOne"]["args"] | EventDefinitions<TSchema, This>["before.deleteMany"]["args"]
-    args: EventDefinitions<TSchema, This>["before.updateOne"]["args"],
-    caller: EventDefinitions<TSchema, This>["before.update"]["caller"],
-    invocationSymbol: symbol
-    docId: InferIdType<TSchema>
-  }
-  deleteOne: {
-    args: EventDefinitions<TSchema, This>["before.deleteOne"]["args"]
-  }
-  deleteMany: {
-    args: EventDefinitions<TSchema, This>["before.deleteMany"]["args"]
-  }
-  delete: {
-    argsOrig: EventDefinitions<TSchema, This>["before.deleteOne"]["args"] | EventDefinitions<TSchema, This>["before.deleteMany"]["args"]
-    args: EventDefinitions<TSchema, This>["before.delete"]["args"],
-    caller: EventDefinitions<TSchema, This>["before.delete"]["caller"],
-    invocationSymbol: symbol
-    docId: InferIdType<TSchema>
-  },
-  distinct: {
-    args: EventDefinitions<TSchema, This>["before.distinct"]["args"]
-  }
-}
+import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
+import { tryCatchEmit } from "./tryCatchEmit.js";
 
 
-export class HookedCollection<TSchema extends Document, U = any> extends Collection<TSchema> {
+export class HookedCollection<TSchema extends Document> extends AbstractHookedCollection<TSchema> {
+  #collection: Collection<TSchema>;
   static Events = Events;
   // #transform?: (doc: TSchema) => any;
   #ee = new HookedEventEmitter<HookedEventMap<TSchema, typeof this>>();
-  #client: MongoClient;
 
-  constructor(client: MongoClient, collectionName: string, {
-    transform,
-    ...options
-  }: HookedCollectionOptions<TSchema> = {}) {
-    // @ts-expect-error
-    super(client.db(), collectionName, options);
-    // this.#transform = transform;
-    this.#client = client;
-  }
-
-  getNamespace(): MongoDBCollectionNamespace {
-    return new MongoDBCollectionNamespace(this.dbName, this.collectionName);
+  constructor(collection: Collection<TSchema>) {
+    super(collection);
+    this.#collection = collection;
   }
 
   aggregate<T extends Document>(pipeline: Document[], options?: AggregateOptions): AggregationCursor<T> {
@@ -122,22 +57,20 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     }, "args");
 
     try {
+      const actualCursor = this.#collection.aggregate(chainedPipeline, chainedOptions);
       let cursor = new HookedAggregationCursor(
-        this.#client,
-        this.getNamespace(),
-        chainedPipeline,
+        actualCursor,
         {
           invocationSymbol,
           events: Object.fromEntries(
             this.#ee.eventNames()
             .filter(name => AggregateCursorEventsSet.has(name))
             .map(name => [name, this.#ee.listeners(name)])
-          ),
-          ...resolveOptions(this, chainedOptions)
+          ) as Record<string, HookedListenerCallback<EventNames & typeof AggregateCursorEventsSet, TSchema, typeof this>>,
         }
-      ) as HookedAggregationCursor<TSchema>;
+      ) as HookedAggregationCursor<T>;
 
-      const chainedCursor = this.#ee.callSyncChainWithKey("after.aggregate", {
+      const chainedCursor = this.#ee.callSyncChainWithKey(Events.afterSuccess["aggregate"], {
         args: [chainedPipeline, chainedOptions],
         result: cursor,
         argsOrig: [pipeline, options],
@@ -151,13 +84,13 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
       return chainedCursor as unknown as HookedAggregationCursor<T>;
     }
     catch (e) {
-      this.#ee.callSyncChainWithKey("after.aggregate", {
+      this.#ee.callSyncChain(Events.afterError["aggregate"], {
         args: [chainedPipeline, chainedOptions],
         error: e,
         argsOrig: [pipeline, options],
         thisArg: this,
         invocationSymbol
-      }, "result");
+      });
       throw e;
     }
   }
@@ -170,7 +103,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
       invocationSymbol
     }, "args");
     try {
-      const actualCursor = super.find<T>(chainedFilter, chainedOptions);
+      const actualCursor = this.#collection.find<T>(chainedFilter, chainedOptions);
 
       // we need as X here because it's hard (impossible) to make the args aware of the custom T used by find vs TSchema of the collection
       let cursor = new HookedFindCursor(
@@ -187,7 +120,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
         }
       ) as HookedFindCursor<T>;
 
-      const chainedCursor = this.#ee.callSyncChainWithKey("after.find", {
+      const chainedCursor = this.#ee.callSyncChainWithKey(Events.afterSuccess.find, {
         args: [chainedFilter, chainedOptions],
         result: cursor,
         argsOrig: [filter, options],
@@ -200,7 +133,7 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
       return cursor as unknown as HookedFindCursor<T>;
     }
     catch (e) {
-      this.#ee.callSyncChainWithKey("after.find", {
+      this.#ee.callSyncChainWithKey(Events.afterError.find, {
         args: [chainedFilter, chainedOptions],
         error: e,
         argsOrig: [filter, options],
@@ -214,159 +147,141 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
   hasEvents(eventName: EventNames) {
     return this.#ee.listenerCount(eventName) !== 0;
   }
+
   async #tryCatchEmit<
-    T extends (callArgs: { beforeHooksResult: BeforeAfterEventDefinitions<TSchema>[IE]["before"]["returns"], invocationSymbol: symbol }) => Promise<any>,
-    IE extends keyof BeforeAfterEventDefinitions<TSchema> & keyof TryCatchEmitArgs<TSchema, typeof this>,
-    EA extends TryCatchEmitArgs<TSchema, typeof this>[IE]
+    BEAD extends BeforeAfterErrorEventDefinitions<TSchema, typeof this>,
+    T extends (callArgs: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["returns"] }) => Promise<any>,
+    IE extends keyof BEAD & ("insertOne" | "insertMany" | "insert" | "updateOne" | "updateMany" | "update" | "deleteOne" | "deleteMany" | "delete" | "distinct" | "aggregate"),
+    EA extends BEAD[IE]["before"]["emitArgs"],
+    OEA extends Omit<EA, "invocationSymbol" | "thisArg">
   >(
     internalEvent: IE,
+    emitArgs: OEA,
+    beforeChainKey: keyof OEA,
     fn: T,
-    emitArgs: EA,
   ): Promise<Awaited<ReturnType<T>>> {
+    let {
+      args,
+      caller,
+      ...remainingEmitArgs
+    } = emitArgs as OEA & {
+      args: EA["args"] extends never ? undefined : EA["args"],
+      caller: BEAD[IE]["caller"] extends never ? undefined : BEAD[IE]["caller"]
+    };
 
-    const invocationSymbol = Symbol();
-    const parentInvocationSymbol = emitArgs["invocationSymbol"];
-    const {
-      before: beforeEvent,
-      after: afterEvent
-    }: { before: BeforeEventNames, after: AfterEventNames } = internalSymbolToBeforeAfterKey(internalEvent);
-    const argsOrig = emitArgs.args;
-    let argsToUse = emitArgs.args;
-    if (this.#ee.listenerCount(beforeEvent)) {
-      argsToUse = await this.#ee.callAwaitableChainWithArgs(beforeEvent, {
-        ...emitArgs,
-        invocationSymbol,
+    return tryCatchEmit(
+      this.#ee,
+      fn,
+      caller,
+      args,
+      // @ts-expect-error
+      {
+        ...remainingEmitArgs,
         thisArg: this,
-        ...(parentInvocationSymbol && { parentInvocationSymbol }),
-        ...(argsOrig && { args: argsOrig, argsOrig }),
-      }) as BeforeAfterEventDefinitions<TSchema>[IE]["before"]["args"];
-    }
-    const afterCount = this.#ee.listenerCount(afterEvent);
-    if (!afterCount) {
-      return fn({
-        beforeHooksResult: argsToUse,
-        invocationSymbol
-      });
-    }
-    let gotResult = false;
-    try {
-      let result = await fn({
-        beforeHooksResult: argsToUse,
-        invocationSymbol
-      });
-      gotResult = true;
-      result = await this.#ee.callAwaitableChainWithResult(afterEvent, {
-        ...(parentInvocationSymbol && { parentInvocationSymbol }),
-        argsOrig,
-        result,
-        invocationSymbol,
-        args: argsToUse,
-        thisArg: this
-      } as BeforeAfterEventDefinitions<TSchema>[IE]["after"]["emitArgs"]);
-      return result;
-    }
-    catch (e) {
-      if (!gotResult) {
-        await this.#ee.callAwaitableInParallel(afterEvent, {
-          error: e,
-          parentInvocationSymbol,
-          invocationSymbol,
-          args: argsToUse,
-          argsOrig,
-          thisArg: this
-        } as BeforeAfterEventDefinitions<TSchema>[IE]["after"]["emitArgs"]);
-      }
-      throw e;
-    }
+      },
+      true,
+      true,
+      beforeChainKey,
+      internalEvent
+    )
   }
 
   insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: InsertOneOptions) {
     const argsOrig = [doc, options] as const;
     return this.#tryCatchEmit(
       InternalEvents.insertOne,
+      { args: [doc, options] },
+      "args",
       ({
-        beforeHooksResult: args,
-        invocationSymbol
+        invocationSymbol,
+        beforeHooksResult: [chainedDoc, chainedOptions]
       }) => this.#tryCatchEmit(
         InternalEvents.insert,
+        {
+          args: [chainedDoc, chainedOptions],
+          argsOrig,
+          parentInvocationSymbol: invocationSymbol,
+          doc: chainedDoc,
+          caller: "insertOne"
+        },
+        "doc",
         ({
           beforeHooksResult,
-        }) => super.insertOne(beforeHooksResult, args[1]),
-        {
-          caller: "insertOne",
-          argsOrig,
-          args,
-          doc,
-          invocationSymbol
-        }
-      ),
-      { args: argsOrig }
+        }) => this.#collection.insertOne(beforeHooksResult, options)
+      )
     );
   }
 
   insertMany(docs: OptionalUnlessRequiredId<TSchema>[], options?: BulkWriteOptions) {
-    return this.#tryCatchEmit(InternalEvents.insertMany, async ({
-      invocationSymbol: parentInvocationSymbol
-    }) => {
-      const hasBefore = this.hasEvents(Events.before.insert);
-      const hasAfter = this.hasEvents(Events.after.insert);
-      if (!hasBefore && !hasAfter) {
-        return super.insertMany(docs, options);
-      }
-      else {
-        const invocationSymbols = new Map<string, symbol>();
-        const docMap = new Map<symbol, OptionalUnlessRequiredId<TSchema>>();
-        if (hasBefore) {
-          docs = await Promise.all(docs.map(async (doc, index) => {
-            const invocationSymbol = Symbol();
-            docMap.set(invocationSymbol, doc);
-            invocationSymbols.set(`${index}`, invocationSymbol);
-            const ret = await this.#ee.callAwaitableChainWithArgs(
-              Events.before.insert,
-              {
-                caller: "insertMany",
-                doc,
-                parentInvocationSymbol,
-                args: [docs, options],
-                argsOrig: [docs, options],
-                invocationSymbol,
-                thisArg: this
-              }
-            );
-            return ret;
-          }));
+    return this.#tryCatchEmit(
+      InternalEvents.insertMany,
+      { args: [docs, options] },
+      "args",
+      async ({
+        invocationSymbol: parentInvocationSymbol
+      }) => {
+        const hasBefore = this.hasEvents(Events.before.insert);
+        const hasAfter = this.hasEvents(Events.afterSuccess.insert);
+        if (!hasBefore && !hasAfter) {
+          return this.#collection.insertMany(docs, options);
         }
-        let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>> = super.insertMany(docs, options);
-        if (hasAfter) {
-          const retToUse = await ret;
-          ret = retToUse;
-          await Promise.all(Object.entries(ret.insertedIds).map(([indexString, insertedId]) => {
-            const invocationSymbol = invocationSymbols.get(indexString) || Symbol();
-            const doc = docMap.get(invocationSymbol);
-            if (doc === undefined) {
-              throw new Error("Impossible - we got an afterhook for a doc that wasn't inserted");
-            }
-            return this.#ee.callAwaitableChainWithArgs(
-              Events.after.insert,
-              {
-                caller: "insertMany",
-                args: [docs, options],
-                doc,
-                argsOrig: [docs, options],
-                result: {
-                  acknowledged: retToUse.acknowledged,
-                  insertedId
+        else {
+          const invocationSymbols = new Map<string, symbol>();
+          const docMap = new Map<symbol, OptionalUnlessRequiredId<TSchema>>();
+          if (hasBefore) {
+            docs = await Promise.all(docs.map(async (doc, index) => {
+              const invocationSymbol = Symbol();
+              docMap.set(invocationSymbol, doc);
+              invocationSymbols.set(`${index}`, invocationSymbol);
+              const ret = await this.#ee.callAwaitableChainWithKey(
+                Events.before.insert,
+                {
+                  caller: "insertMany",
+                  doc,
+                  parentInvocationSymbol,
+                  args: [docs, options],
+                  argsOrig: [docs, options],
+                  invocationSymbol,
+                  thisArg: this
                 },
-                parentInvocationSymbol,
-                invocationSymbol,
-                thisArg: this
+                "doc"
+              );
+              return ret;
+            }));
+          }
+          let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>> = this.#collection.insertMany(docs, options);
+          if (hasAfter) {
+            const retToUse = await ret;
+            ret = retToUse;
+            await Promise.all(Object.entries(ret.insertedIds).map(([indexString, insertedId]) => {
+              const invocationSymbol = invocationSymbols.get(indexString) || Symbol();
+              const doc = docMap.get(invocationSymbol);
+              if (doc === undefined) {
+                throw new Error("Impossible - we got an afterhook for a doc that wasn't inserted");
               }
-            );
-          }));
+              // TODO: afterError
+              return this.#ee.callAwaitableChainWithArgs(
+                Events.afterSuccess.insert,
+                {
+                  caller: "insertMany",
+                  args: [docs, options],
+                  doc,
+                  argsOrig: [docs, options],
+                  result: {
+                    acknowledged: retToUse.acknowledged,
+                    insertedId
+                  },
+                  parentInvocationSymbol,
+                  invocationSymbol,
+                  thisArg: this
+                }
+              );
+            }));
+          }
+          return ret;
         }
-        return ret;
       }
-    }, { args: [docs, options] });
+    );
   }
 
   updateOne(
@@ -377,11 +292,13 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     const argsOrig = [filter, update, options] as const;
     return this.#tryCatchEmit(
       InternalEvents.updateOne,
+      { args: argsOrig },
+      "args",
       async ({
         beforeHooksResult: args,
         invocationSymbol
       }) => {
-        const docId = (await this.findOne(args[0], { projection: { _id: 1 } }))?._id;
+        const docId = (await this.#collection.findOne(args[0], { projection: { _id: 1 } }))?._id;
         if (!docId) {
           return {
             acknowledged: true,
@@ -393,19 +310,25 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
         }
         return this.#tryCatchEmit(
           InternalEvents.update,
-          ({
-            beforeHooksResult: [filter, update, options]
-          }) => super.updateOne(filter, update, options),
           {
             caller: "updateOne",
             argsOrig,
             args,
-            docId,
-            invocationSymbol
-          }
+            filterMutator: {
+              filter: args[0],
+              mutator: args[1]
+            },
+            parentInvocationSymbol: invocationSymbol
+          },
+          "filterMutator",
+          ({
+            beforeHooksResult: {
+              filter,
+              mutator
+            }
+          }) => this.#collection.updateOne(filter, mutator, args[2]),
         );
-      },
-      { args: argsOrig }
+      }
     );
   }
 
@@ -413,22 +336,26 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     const argsOrig = [filter, options] as const;
     return this.#tryCatchEmit(
       InternalEvents.deleteOne,
+      { args: argsOrig },
+      "args",
       async ({
         beforeHooksResult: args,
         invocationSymbol
       }) => {
-        const docId = (await super.findOne(args[0], { projection: { _id: 1 } }))?._id;
+        const docId = (await this.#collection.findOne(args[0], { projection: { _id: 1 } }))?._id;
         if (docId) {
           return this.#tryCatchEmit(
             InternalEvents.delete,
-            ({ beforeHooksResult: filter }) => super.deleteOne(filter, options),
             {
               caller: "deleteOne",
               argsOrig,
               args,
-              docId,
-              invocationSymbol
-            }
+              _id: docId,
+              parentInvocationSymbol: invocationSymbol,
+              filter
+            },
+            "filter",
+            ({ beforeHooksResult: filter }) => super.deleteOne(filter, options)
           );
         }
         else {
@@ -437,54 +364,59 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
             deletedCount: 0
           };
         }
-      },
-      { args: argsOrig }
+      }
     );
   }
 
   deleteMany(origFilter: Filter<TSchema>, origOptions?: DeleteOptions) {
     const argsOrig = [origFilter, origOptions] as const;
-    return this.#tryCatchEmit(InternalEvents.deleteMany, async ({
-      beforeHooksResult: [filter, options],
-      invocationSymbol
-    }) => {
-      const hasBefore = this.hasEvents(Events.before.delete);
-      const hasAfter = this.hasEvents(Events.after.delete);
-      if (!hasBefore && !hasAfter) {
-        return super.deleteMany(filter, options);
-      }
-      const promiseFn = options?.ordered ? Promise.all : Promise.allSettled;
-      const result = {
-        acknowledged: true,
-        deletedCount: 0
-      };
-      const cursor = super.find(filter).project({ _id: 1 });
-      const promises = await cursor.map(async ({ _id }) => {
-        const partialResult = await this.#tryCatchEmit(
-          InternalEvents.delete,
-          // QUESTION: why is this `as` necessary?
-          ({
-            beforeHooksResult: filter
-          }) => super.deleteOne(
-            { $and: [filter as { [P in keyof WithId<WithId<TSchema>>]}, { _id }] },
-            options
-          ),
-          {
-            caller: "deleteMany",
-            argsOrig,
-            docId: _id,
-            args: [filter, options],
-            invocationSymbol
-          }
-        );
-        if (partialResult.acknowledged) {
-          result.deletedCount += partialResult.deletedCount;
+    return this.#tryCatchEmit(
+      InternalEvents.deleteMany,
+      { args: argsOrig },
+      "args",
+      async ({
+        beforeHooksResult: [filter, options],
+        invocationSymbol
+      }) => {
+        const hasBefore = this.hasEvents(Events.before.delete);
+        const hasAfter = this.hasEvents(Events.afterSuccess.delete) || this.hasEvents(Events.afterError.delete);
+        if (!hasBefore && !hasAfter) {
+          return super.deleteMany(filter, options);
         }
-      }).toArray();
+        const promiseFn = options?.ordered ? Promise.all : Promise.allSettled;
+        const result = {
+          acknowledged: true,
+          deletedCount: 0
+        };
+        const cursor = this.#collection.find(filter).project({ _id: 1 });
+        const promises = await cursor.map(async ({ _id }) => {
+          const partialResult = await this.#tryCatchEmit(
+            InternalEvents.delete,
+            {
+              caller: "deleteMany",
+              argsOrig,
+              _id,
+              filter,
+              args: [filter, options],
+              parentInvocationSymbol: invocationSymbol
+            },
+            "filter",
+            // QUESTION: why is this `as` necessary?
+            ({
+              beforeHooksResult: filter
+            }) => super.deleteOne(
+              { $and: [filter as { [P in keyof WithId<WithId<TSchema>>]}, { _id }] },
+              options
+            )
+          );
+          if (partialResult.acknowledged) {
+            result.deletedCount += partialResult.deletedCount;
+          }
+        }).toArray();
 
-      await promiseFn(promises);
-      return result;
-    }, { args: argsOrig });
+        await promiseFn(promises);
+        return result;
+      });
   }
 
   distinct<Key extends keyof WithId<TSchema>>(
@@ -494,8 +426,9 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
   ) {
     return this.#tryCatchEmit(
       InternalEvents.distinct,
-      ({ beforeHooksResult: [key, filter, options] }) => super.distinct(key, filter, options),
-      { args: [key, filter, options] }
+      { args: [key, filter, options] },
+      "args",
+      ({ beforeHooksResult: [key, filter, options] }) => this.#collection.distinct(key, filter, options),
     );
   }
 
@@ -513,5 +446,27 @@ export class HookedCollection<TSchema extends Document, U = any> extends Collect
     listener: HookedListenerCallback<K, TSchema, typeof this>
   ) {
     return this.#ee.awaitableOff(eventName, listener);
+  }
+
+  updateMany(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>> {
+    return this.#collection.updateMany(filter, update, options);
+  }
+
+  replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: ReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>> {
+    return this.#collection.replaceOne(filter, replacement, options);
+  }
+
+  count(filter?: Filter<TSchema> | undefined, options?: CountOptions | undefined): Promise<number> {
+    return this.#collection.count(filter, options);
+  }
+
+  findOne<T = TSchema>(filter?: Filter<TSchema>, options?: FindOptions<Document> | undefined): Promise<T | null> {
+    if (filter && options) {
+      return this.#collection.findOne(filter, options) as Promise<T | null>;
+    }
+    if (filter) {
+      return this.#collection.findOne(filter) as Promise<T | null>;
+    }
+    return this.#collection.findOne() as Promise<T | null>;
   }
 }

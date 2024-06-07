@@ -32,10 +32,10 @@ export type ParentInvocationSymbol = {
 
 export type ErrorT = {
   /** The error caused by the action. Mutually exclusive with result */
-  error?: any
+  error: any
 }
 
-export type Result<O extends {result: any}> = {
+export type Result<O> = O extends {result: any} ? {
   /**The result of the call */
-  result?: O["result"]
-}
+  result: O["result"]
+} : {}
