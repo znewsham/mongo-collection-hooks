@@ -79,7 +79,7 @@ export class FakeCollection {
     };
   }
 
-  replaceOne(filter, replacement, { upsert }) {
+  replaceOne(filter, replacement, { upsert } = {}) {
     const doc = this.#data.find(safeCompile(filter));
     if (!doc && upsert) {
       this.#data.push(replacement);
@@ -88,8 +88,13 @@ export class FakeCollection {
         upsertedId: replacement._id
       };
     }
+    else if (!doc) {
+      return {
+        acknowledged: true
+      };
+    }
     else {
-      const index = this.docs.indexOf(doc);
+      const index = this.#data.indexOf(doc);
       this.docs[index] = { ...replacement, _id: doc._id };
       return {
 

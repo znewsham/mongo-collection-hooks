@@ -1,30 +1,42 @@
 import type { AggregationCursor } from "mongodb";
-import { AggregateCursorEventsSet, CallerType, EventDefinitions, Events, HookedEventEmitter, HookedEventMap, InternalEvents, assertCaller } from "./events.js";
+import { AggregateCursorEventsSet, BeforeAfterAggregateCursorNames, CallerType, EventDefinitions, Events, HookedEventEmitter, HookedEventMap, InternalEvents, PartialCallbackMap, PartialChainedCallbackEventMap, PartialRecord, assertCaller } from "./events.js";
 import { AbstractHookedAggregationCursor } from "./abstractAggregationCursorImpl.js";
-import { ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
+import { ChainedListenerCallback, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { tryCatchEmit } from "./tryCatchEmit.js";
 
+
 interface HookedAggregateCursorOptions<TSchema> {
-  events: Record<string, ListenerCallback<keyof HookedEventMap<TSchema, any> & typeof AggregateCursorEventsSet, ConvertCallbackArgsToArgs<HookedEventMap<TSchema, typeof this>>>[]>,
+  events: PartialCallbackMap<
+    keyof HookedEventMap<TSchema, any> & BeforeAfterAggregateCursorNames,
+    HookedEventMap<TSchema, HookedAggregationCursor<TSchema>>
+  >,
   invocationSymbol: symbol,
+  invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedAggregationCursor<TSchema>> & BeforeAfterAggregateCursorNames, HookedEventMap<TSchema, HookedAggregationCursor<TSchema>>>
 }
 
 export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHookedAggregationCursor<TSchema> {
-  #ee = new HookedEventEmitter<HookedEventMap<TSchema, typeof this>>();
+  #ee = new HookedEventEmitter<PartialChainedCallbackEventMap<keyof HookedEventMap<TSchema, any> & BeforeAfterAggregateCursorNames, HookedEventMap<TSchema, typeof this>>>();
   #aggregateInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
   #caller: CallerType<"aggregate.cursor.asyncIterator" | "aggregate.cursor.forEach" | "aggregate.cursor.toArray"  | "aggregate.cursor.execute" | "aggregate.cursor.next"> = "aggregate";
   #cursor: AggregationCursor<TSchema>;
+  #invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedAggregationCursor<TSchema>> & BeforeAfterAggregateCursorNames, HookedEventMap<TSchema, HookedAggregationCursor<TSchema>>>;
 
   constructor(cursor: AggregationCursor<TSchema>, {
     events,
     invocationSymbol,
+    invocationOptions
   }: HookedAggregateCursorOptions<TSchema>) {
     super(cursor);
     this.#cursor = cursor;
-    this.#aggregateInvocationSymbol = invocationSymbol
+    this.#aggregateInvocationSymbol = invocationSymbol;
+    this.#invocationOptions = invocationOptions;
     Object.entries(events).forEach(([name, listeners]) => {
-      listeners.forEach(listener => this.#ee.addListener(name, listener));
+      listeners.forEach(listener => this.#ee.addListener(
+        // @ts-expect-error
+        name,
+        listener
+      ));
     });
   }
 
@@ -165,6 +177,10 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       false,
       true,
       undefined,
+      // @ts-expect-error
+      this.#invocationOptions,
+      undefined,
+      undefined,
       InternalEvents["aggregate.cursor.toArray"],
       InternalEvents["cursor.toArray"],
     );
@@ -179,11 +195,15 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       [iterator],
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
-        thisArg: this
+        thisArg: this,
       },
       true,
       false,
       "args",
+      // @ts-expect-error
+      this.#invocationOptions,
+      undefined,
+      undefined,
       "aggregate.cursor.forEach",
       "cursor.forEach"
     );
@@ -236,8 +256,8 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     return new HookedAggregationCursor<TSchema>(this.#cursor.clone(), {
       invocationSymbol: this.#aggregateInvocationSymbol,
       events: Object.fromEntries(
-        (this.#ee.eventNames() as string[])
-        .map(name => [name, this.#ee.listeners(name)])
+        this.#ee.eventNames()
+        .map(name => [name, this.#ee.awaitableListeners(name)])
       )
     });
   }

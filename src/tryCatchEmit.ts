@@ -1,22 +1,11 @@
+import { ChainedCallbackEventMap, ChainedListenerCallback, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { AfterEventErrorNames, AfterEventSuccessNames, BeforeAfterErrorEventDefinitions, BeforeAfterEventNames, BeforeEventNames, CallerType, HookedEventEmitter, HookedEventMap, assertArgs, assertCaller, internalSymbolToBeforeAfterKey } from "./events.js";
 
 // don't hate the player, hate typescript :|. This Horrible function does a relatively good job of enforcing types externally
 
-/**
- *
- * @param ee
- * @param fn
- * @param caller
- * @param args
- * @param beforeAfterEmitArgs
- * @param chainArgs
- * @param chainResult
- * @param internalEvent
- * @param additionalInternalEvents
- * @returns
- */
 export async function tryCatchEmit<
   TSchema,
+  HEM extends ChainedCallbackEventMap,
   T extends (callArgs: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["returns"] }) => Promise<any>,
   IE extends BeforeAfterEventNames,
   BEA extends BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["emitArgs"],
@@ -25,7 +14,7 @@ export async function tryCatchEmit<
   AEAO extends BEA extends { argsOrig: any[] } ? Omit<AEA, "args" | "invocationSymbol" | "caller" | "result"> : Omit<AEA, "args" | "argsOrig" | "invocationSymbol" | "caller" | "result">,
   CT extends BeforeAfterErrorEventDefinitions<TSchema>[IE]["caller"] extends never ? undefined : CallerType & BeforeAfterErrorEventDefinitions<TSchema>[IE]["caller"]
 >(
-  ee: HookedEventEmitter<HookedEventMap<TSchema, any>>,
+  ee: HookedEventEmitter<HEM>,
   fn: T,
   caller: CT,
   args: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"] extends never ? undefined : BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"],
@@ -33,6 +22,9 @@ export async function tryCatchEmit<
   chainArgs: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["returnEmitName"] extends never ? false : true,
   chainResult: BeforeAfterErrorEventDefinitions<TSchema>[IE]["after"]["returnEmitName"] extends never ? false : true,
   chainArgsKey: ((keyof (BEAO | AEAO) & (BEAO & AEAO) | "args") & string) | undefined,
+  invocationOptions: StandardInvokeHookOptions<`before.${IE}` | `after.${IE}`, HEM> | undefined,
+  specificBeforeCallbacks: ChainedListenerCallback<`before.${IE}` | `after.${IE}`, HEM>[] | undefined,
+  specificAfterCallbacks: ChainedListenerCallback<`before.${IE}` | `after.${IE}`, HEM>[] | undefined,
   internalEvent: IE,
   ...additionalInternalEvents: (keyof BeforeAfterErrorEventDefinitions<TSchema>)[]
 ): Promise<Awaited<ReturnType<T>>> {

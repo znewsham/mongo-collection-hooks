@@ -1,31 +1,36 @@
 import type { FindCursor, Document, CountOptions } from "mongodb";
-import { CallerType, Events, FindCursorEventsSet, HookedEventEmitter, HookedEventMap, InternalEvents, assertCaller } from "./events.js";
-import { ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
+import { BeforeAferFindCursorNames, BeforeAfterErrorEventDefinitions, CallerType, Events, HookedEventEmitter, HookedEventMap, InternalEvents, PartialCallbackMap, PartialChainedCallbackEventMap, assertCaller } from "./events.js";
 import { AbstractHookedFindCursor } from "./abstractFindCursorImpl.js";
 import { tryCatchEmit } from "./tryCatchEmit.js";
+import { StandardDefineHookOptions, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 
 interface HookedFindCursorOptions<TSchema> {
-  transform?(doc: TSchema): any
-  events: Record<string, ListenerCallback<keyof HookedEventMap<any, any> & typeof FindCursorEventsSet, ConvertCallbackArgsToArgs<HookedEventMap<TSchema, typeof this>>>[]>,
+  transform?: (doc: TSchema) => any,
+  events: PartialCallbackMap<
+    keyof HookedEventMap<TSchema, HookedFindCursor<TSchema>> & BeforeAferFindCursorNames,
+    HookedEventMap<TSchema, HookedFindCursor<TSchema>>
+  >,
   invocationSymbol: symbol,
-  interceptExecute: boolean
+  interceptExecute: boolean,
+  invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedFindCursor<TSchema>> & BeforeAferFindCursorNames, HookedEventMap<TSchema, HookedFindCursor<TSchema>>>
 }
-
-export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>  implements FindCursor<TSchema> {
+export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedFindCursor<TSchema>  implements FindCursor<TSchema> {
   #transform?:(doc: TSchema) => any;
-  #ee = new HookedEventEmitter<HookedEventMap<TSchema, typeof this>>();
+  #ee = new HookedEventEmitter<PartialChainedCallbackEventMap<keyof HookedEventMap<TSchema, typeof this> & BeforeAferFindCursorNames, HookedEventMap<TSchema, typeof this>>>();
   #findInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
   #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next"> = "find";
   #cursor: FindCursor<TSchema>;
   #filter: Document;
   #interceptExecute: boolean;
+  #invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedFindCursor<TSchema>> & BeforeAferFindCursorNames, HookedEventMap<TSchema, HookedFindCursor<TSchema>>>;
 
   constructor(filter: Document | undefined, findCursor: FindCursor<TSchema>, {
     transform,
     events,
     invocationSymbol,
     interceptExecute = false,
+    invocationOptions
   }: HookedFindCursorOptions<TSchema>) {
     super(findCursor);
     this.#transform = transform;
@@ -33,8 +38,13 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
     this.#filter = filter || {};
     this.#findInvocationSymbol = invocationSymbol;
     this.#currentInvocationSymbol = invocationSymbol;
+    this.#invocationOptions = invocationOptions;
     Object.entries(events).forEach(([name, listeners]) => {
-      listeners.forEach(listener => this.#ee.addListener(name, listener));
+      listeners.forEach(listener => this.#ee.addListener(
+        // @ts-expect-error
+        name,
+        listener
+      ));
     });
     this.#interceptExecute = interceptExecute;
   }
@@ -123,6 +133,7 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
 
   async next(): Promise<TSchema | null> {
     assertCaller(this.#caller, "find.cursor.next");
+    this.#ee.awaitableListeners("before.find.cursor.next")
     return tryCatchEmit(
       this.#ee,
       async ({ invocationSymbol }) => this.#wrapCaller("find.cursor.next", async () => {
@@ -140,10 +151,14 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
       undefined,
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
+        // @ts-expect-error - I have no idea why but it's mixing HookedFindCursor<TSchema> with HookedFindCursor<args>
         thisArg: this
       },
       false,
       true,
+      undefined,
+      this.#invocationOptions,
+      undefined,
       undefined,
       InternalEvents["find.cursor.next"],
       InternalEvents["cursor.next"]
@@ -164,10 +179,14 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
       undefined,
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
+        // @ts-expect-error - I have no idea why but it's mixing HookedFindCursor<TSchema> with HookedFindCursor<args>
         thisArg: this
       },
       false,
       true,
+      undefined,
+      this.#invocationOptions,
+      undefined,
       undefined,
       InternalEvents["find.cursor.toArray"],
       InternalEvents["cursor.toArray"],
@@ -183,11 +202,15 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
       [options],
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
+        // @ts-expect-error - I have no idea why but it's mixing HookedFindCursor<TSchema> with HookedFindCursor<args>
         thisArg: this
       },
       true,
       true,
       "args",
+      this.#invocationOptions,
+      undefined,
+      undefined,
       "find.cursor.count",
       InternalEvents["cursor.count"],
     );
@@ -212,6 +235,10 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
       true,
       false,
       "args",
+      // @ts-expect-error I've no idea why just this one usage is complaining
+      this.#invocationOptions,
+      undefined,
+      undefined,
       "find.cursor.forEach",
       "cursor.forEach"
     );
@@ -265,12 +292,13 @@ export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema>
   }
 
   clone(): HookedFindCursor<TSchema> {
+    const eventNames = this.#ee.eventNames();
     return new HookedFindCursor<TSchema>(this.#filter, this.#cursor.clone(), {
       invocationSymbol: this.#findInvocationSymbol,
       transform: this.#transform,
       events: Object.fromEntries(
-        (this.#ee.eventNames() as string[])
-        .map(name => [name, this.#ee.listeners(name)])
+        eventNames
+        .map(name => [name, this.#ee.awaitableListeners(name)])
       ),
       interceptExecute: this.#interceptExecute
     });
