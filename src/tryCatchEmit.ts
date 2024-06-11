@@ -1,32 +1,34 @@
 import { ChainedCallbackEventMap, ChainedListenerCallback, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
-import { AfterEventErrorNames, AfterEventSuccessNames, BeforeAfterErrorEventDefinitions, BeforeAfterEventNames, BeforeEventNames, CallerType, HookedEventEmitter, HookedEventMap, assertArgs, assertCaller, internalSymbolToBeforeAfterKey } from "./events.js";
+import { CollectionBeforeAfterErrorEventDefinitions, CallerType, HookedEventEmitter, assertCaller, internalSymbolToBeforeAfterKey } from "./events/index.js";
 
 // don't hate the player, hate typescript :|. This Horrible function does a relatively good job of enforcing types externally
 
 export async function tryCatchEmit<
-  TSchema,
+  BEAAD extends CollectionBeforeAfterErrorEventDefinitions<Document>,
   HEM extends ChainedCallbackEventMap,
-  T extends (callArgs: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["returns"] }) => Promise<any>,
-  IE extends BeforeAfterEventNames,
-  BEA extends BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["emitArgs"],
-  AEA extends BeforeAfterErrorEventDefinitions<TSchema>[IE]["after"]["emitArgs"],
+  BE extends `before.${IE}`,
+  AE extends `after.${IE}.success`,
+  T extends (callArgs: HEM[BE]["emitArgs"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }) => Promise<any>,
+  IE extends keyof CollectionBeforeAfterErrorEventDefinitions<Document>,
+  BEA extends HEM[BE]["emitArgs"],
+  AEA extends HEM[AE]["emitArgs"],
   BEAO extends Omit<BEA, "args" | "invocationSymbol" | "caller">,
   AEAO extends BEA extends { argsOrig: any[] } ? Omit<AEA, "args" | "invocationSymbol" | "caller" | "result"> : Omit<AEA, "args" | "argsOrig" | "invocationSymbol" | "caller" | "result">,
-  CT extends BeforeAfterErrorEventDefinitions<TSchema>[IE]["caller"] extends never ? undefined : CallerType & BeforeAfterErrorEventDefinitions<TSchema>[IE]["caller"]
+  CT extends BEAAD[IE]["caller"] extends never ? undefined : CallerType & BEAAD[IE]["caller"]
 >(
   ee: HookedEventEmitter<HEM>,
   fn: T,
   caller: CT,
-  args: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"] extends never ? undefined : BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["args"],
+  args: HEM[`before.${IE}`]["emitArgs"]["args"] extends never ? undefined : HEM[`before.${IE}`]["emitArgs"]["args"],
   beforeAfterEmitArgs: (BEAO | AEAO) & (BEAO & AEAO),
-  chainArgs: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["returnEmitName"] extends never ? false : true,
-  chainResult: BeforeAfterErrorEventDefinitions<TSchema>[IE]["after"]["returnEmitName"] extends never ? false : true,
+  chainArgs: BEAAD[IE]["before"]["returnEmitName"] extends never ? false : true,
+  chainResult: BEAAD[IE]["after"]["returnEmitName"] extends never ? false : true,
   chainArgsKey: ((keyof (BEAO | AEAO) & (BEAO & AEAO) | "args") & string) | undefined,
-  invocationOptions: StandardInvokeHookOptions<`before.${IE}` | `after.${IE}`, HEM> | undefined,
-  specificBeforeCallbacks: ChainedListenerCallback<`before.${IE}` | `after.${IE}`, HEM>[] | undefined,
-  specificAfterCallbacks: ChainedListenerCallback<`before.${IE}` | `after.${IE}`, HEM>[] | undefined,
+  invocationOptions: StandardInvokeHookOptions<BE | AE | `after.${IE}.error`, HEM> | undefined,
+  specificBeforeCallbacks: ChainedListenerCallback<BE | AE, HEM>[] | undefined,
+  specificAfterCallbacks: ChainedListenerCallback<BE | AE, HEM>[] | undefined,
   internalEvent: IE,
-  ...additionalInternalEvents: (keyof BeforeAfterErrorEventDefinitions<TSchema>)[]
+  ...additionalInternalEvents: (keyof CollectionBeforeAfterErrorEventDefinitions<Document>)[]
 ): Promise<Awaited<ReturnType<T>>> {
   if (caller) {
     assertCaller(caller, internalEvent);
@@ -39,7 +41,7 @@ export async function tryCatchEmit<
     before: beforeEvent,
     afterSuccess: afterEvent,
     afterError: errorEvent
-  }: { before: BeforeEventNames, afterSuccess: AfterEventSuccessNames, afterError: AfterEventErrorNames } = internalSymbolToBeforeAfterKey(internalEvent);
+  }: { before: `before.${IE}`, afterSuccess: `after.${IE}.success`, afterError: `after.${IE}.error` } = internalSymbolToBeforeAfterKey(internalEvent);
   const additionalBeforeEvents = additionalInternalEvents.map(additionalInternalEvent => internalSymbolToBeforeAfterKey(additionalInternalEvent).before);
   const additionalAfterEvents = additionalInternalEvents.map(additionalInternalEvent => internalSymbolToBeforeAfterKey(additionalInternalEvent).afterSuccess);
   const additionalErrorEvents = additionalInternalEvents.map(additionalInternalEvent => internalSymbolToBeforeAfterKey(additionalInternalEvent).afterError);
@@ -51,8 +53,10 @@ export async function tryCatchEmit<
         ...(argsOrig && { argsOrig }),
         ...(caller && { caller }),
         ...beforeAfterEmitArgs,
-      } as BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["emitArgs"],
+      } as BEAAD[IE]["before"]["emitArgs"],
       chainArgsKey,
+      // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
+      invocationOptions,
       beforeEvent,
       ...additionalBeforeEvents
     );
@@ -64,7 +68,9 @@ export async function tryCatchEmit<
         ...(caller && { caller }),
         ...(args && { args }),
         ...beforeAfterEmitArgs
-      } as BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["emitArgs"],
+      } as BEAAD[IE]["before"]["emitArgs"],
+      // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
+      invocationOptions,
       beforeEvent,
       ...additionalBeforeEvents
     );
@@ -82,8 +88,10 @@ export async function tryCatchEmit<
           ...(argsOrig && { argsOrig }),
           ...(result !== undefined && { result }),
           ...beforeAfterEmitArgs
-        } as BeforeAfterErrorEventDefinitions<TSchema>[IE]["after"]["emitArgs"],
+        } as BEAAD[IE]["after"]["emitArgs"],
         "result",
+        // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
+        invocationOptions,
         afterEvent,
         ...additionalAfterEvents
       );
@@ -100,7 +108,9 @@ export async function tryCatchEmit<
           ...(argsOrig && { argsOrig }),
           ...(result !== undefined && { result }),
           ...beforeAfterEmitArgs
-        } as BeforeAfterErrorEventDefinitions<TSchema>[IE]["after"]["emitArgs"],
+        } as BEAAD[IE]["after"]["emitArgs"],
+        // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
+        invocationOptions,
         afterEvent,
         ...additionalAfterEvents
       );
@@ -117,7 +127,9 @@ export async function tryCatchEmit<
           ...(argsOrig && { argsOrig }),
           error: e,
           ...beforeAfterEmitArgs
-        } as BeforeAfterErrorEventDefinitions<TSchema>[IE]["error"]["emitArgs"],
+        } as BEAAD[IE]["error"]["emitArgs"],
+        // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
+        invocationOptions,
         errorEvent,
         ...additionalErrorEvents
       );

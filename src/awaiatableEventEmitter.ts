@@ -75,8 +75,9 @@ export class ChainedAwaiatableEventEmitter<
   #callSyncChainWithKey<K extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"]>(
     eventName: K,
     emitArgs: EM[K]["emitArgs"],
-    chainKey: CK,
-    origChainedValue: EM[K]["emitArgs"][CK]
+    chainKey: CK | undefined,
+    origChainedValue: CK extends undefined ? undefined : EM[K]["emitArgs"][CK],
+    options: StandardInvokeHookOptions<K, EM> | undefined,
   ): EM[K]["returns"] {
     const origKey = `${chainKey}Orig`;
     const {
@@ -84,72 +85,56 @@ export class ChainedAwaiatableEventEmitter<
     } = emitArgs;
     let chainedValue = origChainedValue;
 
-    const listeners = this.awaitableListeners(eventName);
+    const listeners = this.relevantAwaitableListeners(eventName, options);
     for (const listener of listeners) {
       const perListenerArgs: EM[K]["callbackArgs"] = {
         ...remainderOfEmitArgs,
-        [chainKey]: chainedValue,
+        ...(chainKey && { [chainKey]: chainedValue }),
         [origKey]: origChainedValue
       };
       const listenerResult = listener(perListenerArgs);
       if (listenerResult instanceof Promise) {
         throw new Error(`${eventName as string} Hook returned a Promise. This is a mistake`);
       }
-      if (listenerResult !== undefined) {
+      if (chainKey && listenerResult !== undefined) {
+        // @ts-expect-error if no key is provided, we won't do this anyway.
         chainedValue = listenerResult;
       }
     }
     return chainedValue;
   }
 
-  callSyncChainWithKey<K extends keyof EM & keyof SYNCEM>(
+  callSyncChainWithKey<K extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"]>(
     eventName: K, // weird - but this is what enforces the keyof SYNCEM
     emitArgs: EM[K]["emitArgs"],
-    chainKey: string
+    chainKey: CK | undefined,
+    options: StandardInvokeHookOptions<K, EM> | undefined,
   ): EM[K]["returns"] {
-    return this.#callSyncChainWithKey(eventName, emitArgs, chainKey, emitArgs[chainKey]);
+    return this.#callSyncChainWithKey(
+      eventName,
+      emitArgs,
+      chainKey,
+      // @ts-expect-error
+      chainKey === undefined ? undefined : emitArgs[chainKey],
+      options
+    );
   }
 
   callSyncChain<K extends keyof EM & keyof SYNCEM>(
     eventName: K, // weird - but this is what enforces the keyof SYNCEM
-    emitArgs: EM[K]["emitArgs"]
+    emitArgs: EM[K]["emitArgs"],
+    options: StandardInvokeHookOptions<K, EM> | undefined,
   ): void {
-    const listeners = this.awaitableListeners(eventName);
+    const listeners = this.relevantAwaitableListeners(eventName, options);
     listeners.forEach(listener => listener(emitArgs));
   }
 
-  callAllSyncChainWithKey<MK extends keyof EM & keyof SYNCEM, K extends keyof EM & keyof SYNCEM>(
-    emitArgs: EM[MK]["emitArgs"],
-    chainKey: string,
-    masterEventName: MK,
-    ...eventNames: K[]
-  ) {
-    const origKey = `${chainKey}Orig`;
-    const origChainedValue = emitArgs[chainKey];
-    let chainedValue = origChainedValue;
-    for (const eventName of [masterEventName, ...eventNames]) {
-      const chainedResult = this.#callSyncChainWithKey(
-        eventName,
-        {
-          [chainKey]: chainedValue,
-          ...emitArgs
-        },
-        chainKey,
-        origChainedValue
-      );
-      if (chainedResult !== undefined) {
-        chainedValue = chainedResult;
-      }
-    }
-    return chainedValue;
-  }
-
   async #callAwaitableChainWithKey<K extends keyof EM, CK extends keyof EM[K]["emitArgs"] & string> (
-    eventName: K,
+    _eventName: K,
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK,
     origChainedValue: EM[K]["emitArgs"][CK],
-    listeners: ChainedListenerCallback<K, EM>[] = this.awaitableListeners(eventName)
+    listeners: ChainedListenerCallback<K, EM>[]
   ): Promise<EM[K]["returns"]> {
     const origKey = `${chainKey}Orig`;
     const {
@@ -172,63 +157,36 @@ export class ChainedAwaiatableEventEmitter<
     return chainedValue;
   }
 
-  async callAwaitableChainWithKey<K extends keyof EM> (
+  async callAwaitableChainWithKey<K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"]> (
     eventName: K,
     emitArgs: EM[K]["emitArgs"],
-    chainKey: string
+    chainKey: CK,
+    options: StandardInvokeHookOptions<K, EM> | undefined,
   ): Promise<EM[K]["returns"]> {
     const origChainedValue = emitArgs[chainKey];
     return this.#callAwaitableChainWithKey(
       eventName,
       emitArgs,
       chainKey,
-      origChainedValue
+      origChainedValue,
+      this.relevantAwaitableListeners(eventName, options)
     );
-  }
-
-  async callAwaitableChainWithArgs<K extends keyof EM> (
-    eventName: K,
-    emitArgs: EM[K]["emitArgs"]
-  ) {
-    return this.callAwaitableChainWithKey(
-      eventName,
-      emitArgs,
-      "args"
-    )
-  }
-
-  async callAwaitableChainWithResult<K extends keyof EM> (
-    eventName: K,
-    emitArgs: EM[K]["emitArgs"]
-  ) {
-    return this.callAwaitableChainWithKey(
-      eventName,
-      emitArgs,
-      "result"
-    )
-  }
-
-  async callAwaitableInParallel<K extends keyof EM> (
-    eventName: K,
-    emitArgs: EM[K]["emitArgs"],
-  ) {
-    // TODO: still need to ensure that *Orig
-    const listeners = this.awaitableListeners(eventName);
-    return Promise.all(listeners.map(listener => listener(emitArgs)));
   }
 
   async callAllAwaitableInParallel<MK extends keyof EM, K extends keyof EM>(
     emitArgs: EM[MK]["emitArgs"],
+    options: StandardInvokeHookOptions<MK | K, EM> | undefined,
     masterEventName: MK,
     ...eventNames: K[]
   ) {
-    const allListeners = [masterEventName, ...eventNames].flatMap(eventName => this.awaitableListeners(eventName));
+    const allListeners = [masterEventName, ...eventNames].flatMap(eventName => this.relevantAwaitableListeners(eventName, options));
     return Promise.all(allListeners.map(listener => listener(emitArgs)));
   }
 
-  async callAllAwaitableChainWithKey<MK extends keyof EM, K extends keyof EM>(
+  async callAllAwaitableChainWithKey<MK extends keyof EM, K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"]>(
     emitArgs: EM[MK]["emitArgs"],
-    chainKey: string,
+    chainKey: CK,
+    options: StandardInvokeHookOptions<MK | K, EM> | undefined,
     masterEventName: MK,
     ...eventNames: K[]
   ) {
@@ -243,7 +201,8 @@ export class ChainedAwaiatableEventEmitter<
           [chainKey]: chainedValue,
         },
         chainKey,
-        origChainedValue
+        origChainedValue,
+        this.relevantAwaitableListeners(eventName, options)
       );
       if (chainedResult !== undefined) {
         chainedValue = chainedResult;
@@ -273,6 +232,18 @@ export class ChainedAwaiatableEventEmitter<
       chainedValue = chainedResult;
     }
     return chainedValue;
+  }
+
+  relevantAwaitableListeners<K extends keyof EM>(
+    eventName: K,
+    options?: StandardInvokeHookOptions<K, EM>
+  ): ChainedListenerCallback<K, EM>[] {
+    const array = this.#listenersMap.get(eventName);
+    if (!array) {
+      return [];
+    }
+    // @ts-expect-error
+    return filterHooksWithOptions(eventName, array, options).map(({ listener }) => listener);
   }
 
   relevantAwaitableListenersWithOptions<K extends keyof EM & string>(

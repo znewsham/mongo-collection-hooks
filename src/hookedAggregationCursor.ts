@@ -1,26 +1,26 @@
 import type { AggregationCursor } from "mongodb";
-import { AggregateCursorEventsSet, BeforeAfterAggregateCursorNames, CallerType, EventDefinitions, Events, HookedEventEmitter, HookedEventMap, InternalEvents, PartialCallbackMap, PartialChainedCallbackEventMap, PartialRecord, assertCaller } from "./events.js";
+import { AggregationCursorHookedEventMap, CallerType, Events, HookedAggregationCursorInterface, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller } from "./events/index.js";
 import { AbstractHookedAggregationCursor } from "./abstractAggregationCursorImpl.js";
-import { ChainedListenerCallback, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
+import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { tryCatchEmit } from "./tryCatchEmit.js";
 
 
 interface HookedAggregateCursorOptions<TSchema> {
   events: PartialCallbackMap<
-    keyof HookedEventMap<TSchema, any> & BeforeAfterAggregateCursorNames,
-    HookedEventMap<TSchema, HookedAggregationCursor<TSchema>>
+    keyof AggregationCursorHookedEventMap<TSchema>,
+    AggregationCursorHookedEventMap<TSchema>
   >,
   invocationSymbol: symbol,
-  invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedAggregationCursor<TSchema>> & BeforeAfterAggregateCursorNames, HookedEventMap<TSchema, HookedAggregationCursor<TSchema>>>
+  invocationOptions?: StandardInvokeHookOptions<keyof AggregationCursorHookedEventMap<TSchema>, AggregationCursorHookedEventMap<TSchema>>
 }
 
-export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHookedAggregationCursor<TSchema> {
-  #ee = new HookedEventEmitter<PartialChainedCallbackEventMap<keyof HookedEventMap<TSchema, any> & BeforeAfterAggregateCursorNames, HookedEventMap<TSchema, typeof this>>>();
+export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHookedAggregationCursor<TSchema> implements HookedAggregationCursorInterface<TSchema> {
+  #ee = new HookedEventEmitter<AggregationCursorHookedEventMap<TSchema>>();
   #aggregateInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
   #caller: CallerType<"aggregate.cursor.asyncIterator" | "aggregate.cursor.forEach" | "aggregate.cursor.toArray"  | "aggregate.cursor.execute" | "aggregate.cursor.next"> = "aggregate";
   #cursor: AggregationCursor<TSchema>;
-  #invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedAggregationCursor<TSchema>> & BeforeAfterAggregateCursorNames, HookedEventMap<TSchema, HookedAggregationCursor<TSchema>>>;
+  #invocationOptions?: StandardInvokeHookOptions<keyof AggregationCursorHookedEventMap<TSchema>, AggregationCursorHookedEventMap<TSchema>>;
 
   constructor(cursor: AggregationCursor<TSchema>, {
     events,
@@ -33,8 +33,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     this.#invocationOptions = invocationOptions;
     Object.entries(events).forEach(([name, listeners]) => {
       listeners.forEach(listener => this.#ee.addListener(
-        // @ts-expect-error
-        name,
+        name as keyof AggregationCursorHookedEventMap<any>,
         listener
       ));
     });
@@ -93,26 +92,17 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
 
   async next(): Promise<TSchema | null> {
     const invocationSymbol = Symbol();
-    await Promise.all([
-      this.#ee.callAwaitableInParallel(
-        Events.before["cursor.next"],
-        {
-          caller: "aggregate",
-          parentInvocationSymbol: invocationSymbol,
-          thisArg: this,
-          invocationSymbol
-        }
-      ),
-      this.#ee.callAwaitableInParallel(
-        Events.before["aggregate.cursor.next"],
-        {
-          caller: "aggregate",
-          parentInvocationSymbol: invocationSymbol,
-          thisArg: this,
-          invocationSymbol
-        }
-      )
-    ]);
+    await this.#ee.callAllAwaitableInParallel(
+      {
+        caller: "aggregate",
+        parentInvocationSymbol: invocationSymbol,
+        thisArg: this,
+        invocationSymbol
+      },
+      this.#invocationOptions,
+      Events.before["aggregate.cursor.next"],
+      Events.before["cursor.next"],
+    );
     let next: TSchema | null;
     let gotNext = false;
     try {
@@ -126,6 +116,8 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           invocationSymbol
         },
+        "result",
+        this.#invocationOptions,
         Events.afterSuccess["aggregate.cursor.next"],
         Events.afterSuccess["cursor.next"]
       );
@@ -140,6 +132,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
             parentInvocationSymbol: this.#aggregateInvocationSymbol,
             invocationSymbol
           },
+          this.#invocationOptions,
           Events.afterError["aggregate.cursor.next"],
           Events.afterError["cursor.next"]
         );
@@ -177,7 +170,6 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       false,
       true,
       undefined,
-      // @ts-expect-error
       this.#invocationOptions,
       undefined,
       undefined,
@@ -200,7 +192,6 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       true,
       false,
       "args",
-      // @ts-expect-error
       this.#invocationOptions,
       undefined,
       undefined,
@@ -218,6 +209,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
         thisArg: this
       },
+      this.#invocationOptions,
       "before.aggregate.cursor.asyncIterator",
       "before.cursor.asyncIterator"
     );
@@ -233,6 +225,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           thisArg: this
         },
+        this.#invocationOptions,
         "after.aggregate.cursor.asyncIterator.success",
         "after.cursor.asyncIterator.success"
       );
@@ -246,6 +239,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           thisArg: this,
           error: e
         },
+        this.#invocationOptions,
         "after.aggregate.cursor.asyncIterator.error",
         "after.cursor.asyncIterator.error"
       );

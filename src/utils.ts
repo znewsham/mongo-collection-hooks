@@ -1,5 +1,5 @@
 import type { Document } from "mongodb";
-import { NestedProjectionOfTSchema } from "./events.js";
+import { NestedProjectionOfTSchema } from "./events/index.js";
 
 export function isProjectionExclusion<TSchema extends Document>(projection: NestedProjectionOfTSchema<TSchema>, isTop: boolean = false) {
   const first = isTop ? Object.entries(projection).find(([key]) => key !== "_id")?.[1] : Object.values(projection)[0];

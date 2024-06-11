@@ -1,5 +1,5 @@
 {
-  "include": ["src/*"],
+  "include": ["src/*", "src/events/events.ts"],
   "exclude": ["src/__*"],
   "compilerOptions": {
     "outDir": "lib",

@@ -1,29 +1,29 @@
 import type { FindCursor, Document, CountOptions } from "mongodb";
-import { BeforeAferFindCursorNames, BeforeAfterErrorEventDefinitions, CallerType, Events, HookedEventEmitter, HookedEventMap, InternalEvents, PartialCallbackMap, PartialChainedCallbackEventMap, assertCaller } from "./events.js";
+import { CallerType, Events, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller, HookedFindCursorInterface, FindCursorHookedEventMap } from "./events/index.js";
 import { AbstractHookedFindCursor } from "./abstractFindCursorImpl.js";
 import { tryCatchEmit } from "./tryCatchEmit.js";
-import { StandardDefineHookOptions, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
+import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 
 interface HookedFindCursorOptions<TSchema> {
   transform?: (doc: TSchema) => any,
   events: PartialCallbackMap<
-    keyof HookedEventMap<TSchema, HookedFindCursor<TSchema>> & BeforeAferFindCursorNames,
-    HookedEventMap<TSchema, HookedFindCursor<TSchema>>
+    keyof FindCursorHookedEventMap<TSchema>,
+    FindCursorHookedEventMap<TSchema>
   >,
   invocationSymbol: symbol,
   interceptExecute: boolean,
-  invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedFindCursor<TSchema>> & BeforeAferFindCursorNames, HookedEventMap<TSchema, HookedFindCursor<TSchema>>>
+  invocationOptions?: StandardInvokeHookOptions<keyof FindCursorHookedEventMap<TSchema>, FindCursorHookedEventMap<TSchema>>
 }
-export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedFindCursor<TSchema>  implements FindCursor<TSchema> {
+export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
   #transform?:(doc: TSchema) => any;
-  #ee = new HookedEventEmitter<PartialChainedCallbackEventMap<keyof HookedEventMap<TSchema, typeof this> & BeforeAferFindCursorNames, HookedEventMap<TSchema, typeof this>>>();
+  #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
   #findInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
   #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next"> = "find";
   #cursor: FindCursor<TSchema>;
   #filter: Document;
   #interceptExecute: boolean;
-  #invocationOptions?: StandardInvokeHookOptions<keyof HookedEventMap<TSchema, HookedFindCursor<TSchema>> & BeforeAferFindCursorNames, HookedEventMap<TSchema, HookedFindCursor<TSchema>>>;
+  #invocationOptions?: StandardInvokeHookOptions<keyof FindCursorHookedEventMap<TSchema>, FindCursorHookedEventMap<TSchema>>;
 
   constructor(filter: Document | undefined, findCursor: FindCursor<TSchema>, {
     transform,
@@ -41,8 +41,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     this.#invocationOptions = invocationOptions;
     Object.entries(events).forEach(([name, listeners]) => {
       listeners.forEach(listener => this.#ee.addListener(
-        // @ts-expect-error
-        name,
+        name as keyof FindCursorHookedEventMap<any>,
         listener
       ));
     });
@@ -68,6 +67,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
 
   async #triggerInit() {
     const invocationSymbol = Symbol();
+    assertCaller(this.#caller, "find.cursor.execute");
     await this.#ee.callAllAwaitableInParallel(
       {
         caller: this.#caller,
@@ -75,6 +75,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         thisArg: this,
         invocationSymbol
       },
+      this.#invocationOptions,
       Events.before["find.cursor.execute"],
       Events.before["cursor.execute"]
     );
@@ -97,6 +98,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           thisArg: this,
           invocationSymbol
         },
+        this.#invocationOptions,
         Events.afterSuccess["find.cursor.execute"],
         Events.afterSuccess["cursor.execute"]
       );
@@ -104,12 +106,13 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     catch (error) {
       await this.#ee.callAllAwaitableInParallel(
         {
-          caller: "find",
+          caller: this.#caller,
           parentInvocationSymbol: this.#currentInvocationSymbol,
           thisArg: this,
           invocationSymbol,
           error
         },
+        this.#invocationOptions,
         Events.afterError["find.cursor.execute"],
         Events.afterError["cursor.execute"]
       );
@@ -151,7 +154,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       undefined,
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
-        // @ts-expect-error - I have no idea why but it's mixing HookedFindCursor<TSchema> with HookedFindCursor<args>
         thisArg: this
       },
       false,
@@ -179,7 +181,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       undefined,
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
-        // @ts-expect-error - I have no idea why but it's mixing HookedFindCursor<TSchema> with HookedFindCursor<args>
         thisArg: this
       },
       false,
@@ -202,7 +203,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       [options],
       {
         parentInvocationSymbol: this.#currentInvocationSymbol,
-        // @ts-expect-error - I have no idea why but it's mixing HookedFindCursor<TSchema> with HookedFindCursor<args>
         thisArg: this
       },
       true,
@@ -211,8 +211,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       this.#invocationOptions,
       undefined,
       undefined,
-      "find.cursor.count",
-      InternalEvents["cursor.count"],
+      "find.cursor.count"
     );
   }
 
@@ -235,7 +234,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       true,
       false,
       "args",
-      // @ts-expect-error I've no idea why just this one usage is complaining
       this.#invocationOptions,
       undefined,
       undefined,
@@ -253,6 +251,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         parentInvocationSymbol: this.#findInvocationSymbol,
         thisArg: this
       },
+      this.#invocationOptions,
       "before.find.cursor.asyncIterator",
       "before.cursor.asyncIterator"
     );
@@ -272,6 +271,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           parentInvocationSymbol: this.#findInvocationSymbol,
           thisArg: this,
         },
+        this.#invocationOptions,
         "after.find.cursor.asyncIterator.success",
         "after.cursor.asyncIterator.success"
       );
@@ -285,6 +285,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           thisArg: this,
           error: e
         },
+        this.#invocationOptions,
         "after.find.cursor.asyncIterator.error",
         "after.cursor.asyncIterator.error"
       );

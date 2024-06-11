@@ -9,11 +9,13 @@ import { defineDistinct } from "./distinct.js";
 import { defineFindOne } from "./findOne.js";
 import { defineFind } from "./find.js";
 import { defineAggregate } from "./aggregate.js";
+import { defineDeleteMany } from "./deleteMany.js";
 
 describe("collection", () => {
   defineInsertOne();
   defineInsertMany();
   defineDeleteOne();
+  defineDeleteMany();
   defineReplaceOne();
   defineUpdateOne();
   defineUpdateMany();

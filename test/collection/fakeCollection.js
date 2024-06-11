@@ -19,29 +19,39 @@ function safeCompile(filter) {
 export class FakeCollection {
   #data;
   #transform;
+  #callCount = 0;
   constructor(data = [], transform = a => a) {
     this.#data = data;
     this.#transform = transform;
   }
 
+  get callCount() {
+    return this.#callCount;
+  }
+
   aggregate(pipeline, options) {
+    this.#callCount++;
     return new FakeAggregationCursor(pipeline, options);
   }
 
   find(filter, options) {
+    this.#callCount++;
     return new FakeFindCursor(this.#data.filter(safeCompile(filter)), filter, options);
   }
 
   findOne(filter) {
+    this.#callCount++;
     return this.#data.find(safeCompile(filter));
   }
 
   distinct(key, filter) {
+    this.#callCount++;
     const docs = this.#data.filter(safeCompile(filter));
     return Array.from(new Set(docs.map(doc => doc[key])));
   }
 
   insertOne(doc) {
+    this.#callCount++;
     this.#data.push(doc);
     return {
       acknowledged: true,
@@ -50,6 +60,7 @@ export class FakeCollection {
   }
 
   insertMany(docs) {
+    this.#callCount++;
     docs.forEach(doc => this.#data.push(doc));
     return {
       acknowledged: true,
@@ -59,6 +70,7 @@ export class FakeCollection {
   }
 
   deleteOne(filter) {
+    this.#callCount++;
     const doc = this.#data.find(safeCompile(filter));
     if (doc) {
       this.#data.splice(this.#data.indexOf(doc), 1);
@@ -70,6 +82,7 @@ export class FakeCollection {
   }
 
   deleteMany(filter) {
+    this.#callCount++;
     const docs = this.#data.filter(safeCompile(filter));
     docs.forEach(doc => this.#data.splice(this.#data.indexOf(doc), 1));
 
@@ -80,6 +93,7 @@ export class FakeCollection {
   }
 
   replaceOne(filter, replacement, { upsert } = {}) {
+    this.#callCount++;
     const doc = this.#data.find(safeCompile(filter));
     if (!doc && upsert) {
       this.#data.push(replacement);
@@ -103,6 +117,7 @@ export class FakeCollection {
   }
 
   updateOne(filter, $modifier) {
+    this.#callCount++;
     const doc = this.#data.find(safeCompile(filter));
     const before = JSON.stringify(doc);
     if (doc) {
@@ -118,6 +133,7 @@ export class FakeCollection {
   }
 
   updateMany(filter, $modifier) {
+    this.#callCount++;
     const docs = this.#data.filter(safeCompile(filter));
     let count = 0;
     docs.forEach((doc) => {
