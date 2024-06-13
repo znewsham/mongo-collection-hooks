@@ -1,11 +1,17 @@
 
 /** These apply to all hooks */
+/**
+ * @external
+ */
 export type StandardDefineHookOptions = {
   /** A set of tags for this hook - e.g., "direct" or "raw" - which can be provided as one of the options to all operations to filter which hooks run at a high level*/
   tags?: string[]
 }
 
-export type StandardInvokeHookOptions<K extends keyof EM, EM extends ChainedCallbackEventMap> = {
+/**
+ * @external
+ */
+export type StandardInvokeHookOptions<EM extends ChainedCallbackEventMap, K extends keyof EM = keyof EM> = {
   /** Filter the hooks to only run those which include one of these tags */
   includeTags?: string[],
   /** Filter the hooks to only run those which don't include one of these tags */
@@ -15,12 +21,13 @@ export type StandardInvokeHookOptions<K extends keyof EM, EM extends ChainedCall
 }
 
 
-export type ChainedCallbackEntry<EMITARGS = any, CBARGS extends EMITARGS = any> = {
+export type ChainedCallbackEntry<EMITARGS = any, CBARGS extends EMITARGS = EMITARGS> = {
   callbackArgs: CBARGS,
   returns: any,
   isPromise: boolean,
   emitArgs: EMITARGS,
-  options: StandardDefineHookOptions
+  options: StandardDefineHookOptions,
+  returnEmitName?: string | undefined
 }
 
 export type ChainedCallbackEventMap = Record<string, ChainedCallbackEntry>
@@ -44,7 +51,7 @@ export type ChainedListenerCallback<
   T[K]["callbackArgs"] extends object ? (...args: [T[K]["callbackArgs"]]) => T[K]["isPromise"] extends false ? T[K]["returns"] | void : T[K]["returns"] | Promise<T[K]["returns"]> | void | Promise<void> : never
 )
 
-function filterHooksWithOptions<K extends keyof EM, EM extends ChainedCallbackEventMap>(eventName: K, hooksWithOptions: CallbackAndOptionsOfEm<EM, K>[], options: StandardInvokeHookOptions<K, EM>): CallbackAndOptionsOfEm<EM, K>[] {
+function filterHooksWithOptions<K extends keyof EM, EM extends ChainedCallbackEventMap>(eventName: K, hooksWithOptions: CallbackAndOptionsOfEm<EM, K>[], options: StandardInvokeHookOptions<EM, K>): CallbackAndOptionsOfEm<EM, K>[] {
   const runExclude = !!options?.excludeTags;
   const runInclude = !!options?.includeTags;
   const excludeSet = new Set(options?.excludeTags || []);
@@ -72,12 +79,12 @@ export class ChainedAwaiatableEventEmitter<
 > {
   #listenersMap: CallbackAndOptionsMap<EM> = new Map();
 
-  #callSyncChainWithKey<K extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"]>(
+  #callSyncChainWithKey<K extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]>(
     eventName: K,
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK | undefined,
     origChainedValue: CK extends undefined ? undefined : EM[K]["emitArgs"][CK],
-    options: StandardInvokeHookOptions<K, EM> | undefined,
+    options: StandardInvokeHookOptions<EM, K> | undefined,
   ): EM[K]["returns"] {
     const origKey = `${chainKey}Orig`;
     const {
@@ -104,11 +111,11 @@ export class ChainedAwaiatableEventEmitter<
     return chainedValue;
   }
 
-  callSyncChainWithKey<K extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"]>(
+  callSyncChainWithKey<K extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]>(
     eventName: K, // weird - but this is what enforces the keyof SYNCEM
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK | undefined,
-    options: StandardInvokeHookOptions<K, EM> | undefined,
+    options: StandardInvokeHookOptions<EM, K> | undefined,
   ): EM[K]["returns"] {
     return this.#callSyncChainWithKey(
       eventName,
@@ -123,13 +130,13 @@ export class ChainedAwaiatableEventEmitter<
   callSyncChain<K extends keyof EM & keyof SYNCEM>(
     eventName: K, // weird - but this is what enforces the keyof SYNCEM
     emitArgs: EM[K]["emitArgs"],
-    options: StandardInvokeHookOptions<K, EM> | undefined,
+    options: StandardInvokeHookOptions<EM, K> | undefined,
   ): void {
     const listeners = this.relevantAwaitableListeners(eventName, options);
     listeners.forEach(listener => listener(emitArgs));
   }
 
-  async #callAwaitableChainWithKey<K extends keyof EM, CK extends keyof EM[K]["emitArgs"] & string> (
+  async #callAwaitableChainWithKey<K extends keyof EM, CK extends keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]> (
     _eventName: K,
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK,
@@ -157,11 +164,11 @@ export class ChainedAwaiatableEventEmitter<
     return chainedValue;
   }
 
-  async callAwaitableChainWithKey<K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"]> (
+  async callAwaitableChainWithKey<K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]> (
     eventName: K,
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK,
-    options: StandardInvokeHookOptions<K, EM> | undefined,
+    options: StandardInvokeHookOptions<EM, K> | undefined,
   ): Promise<EM[K]["returns"]> {
     const origChainedValue = emitArgs[chainKey];
     return this.#callAwaitableChainWithKey(
@@ -175,7 +182,7 @@ export class ChainedAwaiatableEventEmitter<
 
   async callAllAwaitableInParallel<MK extends keyof EM, K extends keyof EM>(
     emitArgs: EM[MK]["emitArgs"],
-    options: StandardInvokeHookOptions<MK | K, EM> | undefined,
+    options: StandardInvokeHookOptions<EM, MK | K> | undefined,
     masterEventName: MK,
     ...eventNames: K[]
   ) {
@@ -183,10 +190,10 @@ export class ChainedAwaiatableEventEmitter<
     return Promise.all(allListeners.map(listener => listener(emitArgs)));
   }
 
-  async callAllAwaitableChainWithKey<MK extends keyof EM, K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"]>(
+  async callAllAwaitableChainWithKey<MK extends keyof EM, K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]>(
     emitArgs: EM[MK]["emitArgs"],
     chainKey: CK,
-    options: StandardInvokeHookOptions<MK | K, EM> | undefined,
+    options: StandardInvokeHookOptions<EM, MK | K> | undefined,
     masterEventName: MK,
     ...eventNames: K[]
   ) {
@@ -210,12 +217,12 @@ export class ChainedAwaiatableEventEmitter<
     }
     return chainedValue;
   }
-  async callExplicitAwaitableListenersChainWithKey<MK extends keyof EM, CK extends keyof EM[MK]["emitArgs"] & string>(
+  async callExplicitAwaitableListenersChainWithKey<MK extends keyof EM, CK extends keyof EM[MK]["emitArgs"] & string & EM[MK]["returnEmitName"]>(
     masterEventName: MK,
     emitArgs: EM[MK]["emitArgs"],
     chainKey: CK,
     listeners: ChainedListenerCallback<MK, EM>[],
-  ) {
+  ) : Promise<EM[MK]["returns"]> {
     let chainedValue = emitArgs[chainKey];
     const origChainedValue = chainedValue;
     const chainedResult = await this.#callAwaitableChainWithKey(
@@ -236,7 +243,7 @@ export class ChainedAwaiatableEventEmitter<
 
   relevantAwaitableListeners<K extends keyof EM>(
     eventName: K,
-    options?: StandardInvokeHookOptions<K, EM>
+    options?: StandardInvokeHookOptions<EM, K>
   ): ChainedListenerCallback<K, EM>[] {
     const array = this.#listenersMap.get(eventName);
     if (!array) {
@@ -248,7 +255,7 @@ export class ChainedAwaiatableEventEmitter<
 
   relevantAwaitableListenersWithOptions<K extends keyof EM & string>(
     eventName: K,
-    options?: StandardInvokeHookOptions<K, EM>
+    options?: StandardInvokeHookOptions<EM, K>
   ): CallbackAndOptionsOfEm<EM, K>[] {
     const array = this.#listenersMap.get(eventName);
     if (!array) {

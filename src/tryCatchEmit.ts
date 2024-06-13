@@ -24,7 +24,7 @@ export async function tryCatchEmit<
   chainArgs: BEAAD[IE]["before"]["returnEmitName"] extends never ? false : true,
   chainResult: BEAAD[IE]["after"]["returnEmitName"] extends never ? false : true,
   chainArgsKey: ((keyof (BEAO | AEAO) & (BEAO & AEAO) | "args") & string) | undefined,
-  invocationOptions: StandardInvokeHookOptions<BE | AE | `after.${IE}.error`, HEM> | undefined,
+  invocationOptions: StandardInvokeHookOptions<HEM, BE | AE | `after.${IE}.error`> | undefined,
   specificBeforeCallbacks: ChainedListenerCallback<BE | AE, HEM>[] | undefined,
   specificAfterCallbacks: ChainedListenerCallback<BE | AE, HEM>[] | undefined,
   internalEvent: IE,
@@ -33,7 +33,7 @@ export async function tryCatchEmit<
   if (caller) {
     assertCaller(caller, internalEvent);
   }
-  const invocationSymbol = Symbol();
+  const invocationSymbol = Symbol(internalEvent);
   const argsOrig = beforeAfterEmitArgs["argsOrig"] || args;
 
   let chainedArgs = args;
@@ -53,7 +53,7 @@ export async function tryCatchEmit<
         ...(argsOrig && { argsOrig }),
         ...(caller && { caller }),
         ...beforeAfterEmitArgs,
-      } as BEAAD[IE]["before"]["emitArgs"],
+      },
       chainArgsKey,
       // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
       invocationOptions,
@@ -68,7 +68,7 @@ export async function tryCatchEmit<
         ...(caller && { caller }),
         ...(args && { args }),
         ...beforeAfterEmitArgs
-      } as BEAAD[IE]["before"]["emitArgs"],
+      },
       // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
       invocationOptions,
       beforeEvent,
@@ -88,7 +88,7 @@ export async function tryCatchEmit<
           ...(argsOrig && { argsOrig }),
           ...(result !== undefined && { result }),
           ...beforeAfterEmitArgs
-        } as BEAAD[IE]["after"]["emitArgs"],
+        },
         "result",
         // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
         invocationOptions,
@@ -108,7 +108,7 @@ export async function tryCatchEmit<
           ...(argsOrig && { argsOrig }),
           ...(result !== undefined && { result }),
           ...beforeAfterEmitArgs
-        } as BEAAD[IE]["after"]["emitArgs"],
+        },
         // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
         invocationOptions,
         afterEvent,
@@ -126,8 +126,9 @@ export async function tryCatchEmit<
           ...(args && { args }),
           ...(argsOrig && { argsOrig }),
           error: e,
+          thisArg: beforeAfterEmitArgs["thisArg"],
           ...beforeAfterEmitArgs
-        } as BEAAD[IE]["error"]["emitArgs"],
+        },
         // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
         invocationOptions,
         errorEvent,

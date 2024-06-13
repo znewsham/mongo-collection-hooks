@@ -89,7 +89,7 @@ const findCursorEvents = [
   "count"
 ] as const;
 const FindCursorEventsSuffixes = specificCursorEvents(findCursorEvents, "find.");
-const AggregateCursorEventsSuffixes = specificCursorEvents(cursorEvents, "aggregate.");
+const AggregateCursorEventsSuffixes = specificCursorEvents(cursorEvents, "aggregation.");
 const GenericCursorEventsSuffixes = specificCursorEvents(cursorEvents, "");
 
 type BeforeAfterNames<K extends string> = `before.${K}` | `after.${K}.success` | `after.${K}.error`;
@@ -149,7 +149,8 @@ export function assertCaller<
 }
 
 export function assertArgs<
-  IE extends BeforeAfterEventNames
->(args: CollectionBeforeAfterErrorEventDefinitions<any>[BeforeAfterEventNames]["before"]["args"], internalEvent: IE): asserts args is CollectionBeforeAfterErrorEventDefinitions<any>[typeof internalEvent]["before"]["args"] {
+  IE extends BeforeAfterEventNames,
+  EE extends CollectionBeforeAfterErrorEventDefinitions<any>[BeforeAfterEventNames]["before"]["emitArgs"]= CollectionBeforeAfterErrorEventDefinitions<any>[BeforeAfterEventNames]["before"]["emitArgs"]
+>(args: EE extends { args: any } ? EE["args"] : never, internalEvent: IE): asserts args is CollectionBeforeAfterErrorEventDefinitions<any>[typeof internalEvent]["before"]["emitArgs"] extends { args: any } ? CollectionBeforeAfterErrorEventDefinitions<any>[typeof internalEvent]["before"]["emitArgs"]["args"] : never {
 
 }

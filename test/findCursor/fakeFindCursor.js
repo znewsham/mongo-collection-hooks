@@ -64,13 +64,6 @@ export class FakeFindCursor {
  */
 
 /**
- * @typedef {import("../../src/events.js").HookedListenerCallback<K, TSchema, This>} HookedListenerCallback<K, TSchema, This >
- * @template {EventNames} K
- * @template {any} TSchema = any
- * @template {any} This = any
- */
-
-/**
  *
  * @param {any[]} data
  * @param {Record<K, HookedListenerCallback<K, any, any>[]>} events

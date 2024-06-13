@@ -1,6 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hooksChain } from "./helpers.js";
+import { assertImplements } from "../helpers.js";
 
 
 export function defineUpdateMany() {
@@ -104,5 +105,109 @@ export function defineUpdateMany() {
       await hookedCollection.updateMany({}, { $set: { a: 1 } });
       assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
     });
+  });
+
+  it("should call the hooks with the correct arguments", async () => {
+    const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+    const beforeUpdateMock = mock.fn();
+    const beforeUpdateManyMock = mock.fn();
+    const afterUpdateMock = mock.fn();
+    const afterUpdateManyMock = mock.fn();
+    hookedCollection.on("before.update", beforeUpdateMock);
+    hookedCollection.on("after.update.success", afterUpdateMock);
+    hookedCollection.on("before.updateMany", beforeUpdateManyMock);
+    hookedCollection.on("after.updateMany.success", afterUpdateManyMock);
+    await hookedCollection.updateMany({}, { $set: { field: "value" } });
+    assertImplements(beforeUpdateMock.mock.calls, [
+      {
+        arguments: [{
+          args: [{}, { $set: { field: "value" } }, undefined],
+          argsOrig: [{}, { $set: { field: "value" } }, undefined],
+          caller: "updateMany",
+          filterMutator: {
+            filter: {},
+            mutator: { $set: { field: "value" } }
+          },
+          filterMutatorOrig: {
+            filter: {},
+            mutator: { $set: { field: "value" } }
+          },
+          _id: "test",
+          thisArg: hookedCollection
+        }]
+      },
+      {
+        arguments: [{
+          args: [{}, { $set: { field: "value" } }, undefined],
+          argsOrig: [{}, { $set: { field: "value" } }, undefined],
+          caller: "updateMany",
+          filterMutator: {
+            filter: {},
+            mutator: { $set: { field: "value" } }
+          },
+          filterMutatorOrig: {
+            filter: {},
+            mutator: { $set: { field: "value" } }
+          },
+          _id: "test2",
+          thisArg: hookedCollection
+        }]
+      }
+    ], "called the beforeUpdate hook correctly");
+    assertImplements(beforeUpdateManyMock.mock.calls[0].arguments, [{
+      args: [{}, { $set: { field: "value" } }, undefined],
+      argsOrig: [{}, { $set: { field: "value" } }, undefined],
+      thisArg: hookedCollection
+    }], "called the beforeUpdateMany hook correctly");
+    assertImplements(afterUpdateManyMock.mock.calls[0].arguments, [{
+      args: [{}, { $set: { field: "value" } }, undefined],
+      argsOrig: [{}, { $set: { field: "value" } }, undefined],
+      result: {
+        acknowledged: true, matchedCount: 2, modifiedCount: 2, upsertedCount: 0, upsertedId: null
+      },
+      resultOrig: {
+        acknowledged: true, matchedCount: 2, modifiedCount: 2, upsertedCount: 0, upsertedId: null
+      },
+      thisArg: hookedCollection
+    }], "called the afterUpdateManyMock hook correctly");
+
+    assertImplements(afterUpdateMock.mock.calls, [
+      {
+        arguments: [{
+          args: [{}, { $set: { field: "value" } }, undefined],
+          argsOrig: [{}, { $set: { field: "value" } }, undefined],
+          filterMutator: {
+            filter: {},
+            mutator: { $set: { field: "value" } }
+          },
+          _id: "test",
+          result: {
+            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+          },
+          resultOrig: {
+            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+          },
+          thisArg: hookedCollection
+        }]
+      },
+      {
+        arguments: [{
+          args: [{}, { $set: { field: "value" } }, undefined],
+          argsOrig: [{}, { $set: { field: "value" } }, undefined],
+          filterMutator: {
+            filter: {},
+            mutator: { $set: { field: "value" } }
+          },
+          _id: "test2",
+          result: {
+            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+          },
+          resultOrig: {
+            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+          },
+          thisArg: hookedCollection
+        }]
+      }
+    ], "called the afterUpdate hook correctly");
   });
 }

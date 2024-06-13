@@ -39,3 +39,8 @@ export type Result<O> = O extends {result: any} ? {
   /**The result of the call */
   result: O["result"]
 } : {}
+
+export type ResultOrig<O> = O extends {result: any} ? {
+  /**The result of the call */
+  resultOrig: O["result"]
+} : {}

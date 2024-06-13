@@ -2,6 +2,9 @@ import { StandardDefineHookOptions } from "../awaiatableEventEmitter.js";
 import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ThisArg } from "../commentedTypes.js";
 
 
+/**
+ * @external
+ */
 export type RecursiveKeyOf<TObj extends object> = {
   [TKey in keyof TObj & (string | number)]:
     RecursiveKeyOfHandleValue<TObj[TKey], `${TKey}`>;
@@ -12,6 +15,10 @@ type RecursiveKeyOfInner<TObj extends object> = {
     RecursiveKeyOfHandleValue<TObj[TKey], `.${TKey}`>;
 }[keyof TObj & (string | number)];
 
+/**
+ * @external
+ * @noFlatten
+ */
 type RecursiveKeyOfHandleValue<TValue, Text extends string> =
   TValue extends object[]
     ? Text | `${Text}${RecursiveKeyOfInner<TValue[0]>}`
@@ -21,12 +28,20 @@ type RecursiveKeyOfHandleValue<TValue, Text extends string> =
         ? Text | `${Text}${RecursiveKeyOfInner<TValue>}`
         : Text;
 
+/**
+ * @external
+ * @noFlatten
+ */
 export type RecursiveProjectionOf<TObj extends object> = {
   [TKey in keyof TObj & (string | number)]:
   RecursiveProjectionOfHandleValue<TObj[TKey], `${TKey}`>;
 }
 
 
+/**
+ * @external
+ * @noFlatten
+ */
 type RecursiveProjectionOfHandleValue<TValue, Text extends string> =
   TValue extends object[]
     ? Text | `${Text}${RecursiveKeyOfInner<TValue[0]>}`
@@ -36,6 +51,10 @@ type RecursiveProjectionOfHandleValue<TValue, Text extends string> =
         ? Text | `${Text}${RecursiveKeyOfInner<TValue>}`
         : Text;
 
+/**
+ * @external
+ * @noFlatten
+ */
 export type NestedProjectionOfTSchema<TObj extends object> = {
   [k in keyof TObj]?: TObj[k] extends object[]
     ? 1 | 0 | NestedProjectionOfTSchema<TObj[k][0]>
@@ -52,17 +71,17 @@ export type ReturnsNamedEmitArg<O extends {emitArgs: {[k in Key]: any}, isPromis
   isPromise: O["isPromise"] extends false ? false : true
 }
 
-export type ReturnsArgs<O extends {args: O["args"], isPromise?: boolean}> = O & {
+export type ReturnsArgs<O extends {args: any, isPromise?: boolean}> = O & {
   returns: O["args"],
   returnEmitName: "args",
   isPromise: O["isPromise"] extends false ? false : true
 }
-export type ReturnsResult<O extends {result: O["result"], isPromise?: boolean}> = O & {
+export type ReturnsResult<O extends {result: any, isPromise?: boolean}> = {
   returns: O["result"],
   returnEmitName: "result",
   isPromise: O["isPromise"] extends false ? false : true
 }
-export type NoReturns<O extends { isPromise?: boolean }> = O & {
+export type NoReturns<O extends { isPromise?: boolean } = {}> = {
   returnEmitName: never,
   isPromise: O["isPromise"] extends false ? false : true
 }
@@ -81,13 +100,14 @@ export type BeforeAfterCallbackArgsAndReturn<
   [k in BIMNames]: {
     callbackArgs:
     {
-      /** The original arguments before any hook was applied */
+      /** The original "thing", e.g. arguments, result, doc, or whatever before any hook was applied */
       [rek in BIM[k]["returnEmitName"] as `${rek}Orig`]: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never
     } & BIM[k]["emitArgs"],
     emitArgs: BIM[k]["emitArgs"],
     returns: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never,
     isPromise: BIM[k]["isPromise"],
-    options: BIM[k] extends { options } ? BIM[k]["options"] : StandardDefineHookOptions
+    returnEmitName: BIM[k] extends { returnEmitName: never } ? undefined : BIM[k]["returnEmitName"],
+    options: BIM[k] extends { options: StandardDefineHookOptions } ? BIM[k]["options"] : StandardDefineHookOptions
   }
 }
 
@@ -102,8 +122,7 @@ export type ExtractEventDefinitions<
   [k in K as (Suffix extends string ? `${Prefix}.${k}.${Suffix}`: `${Prefix}.${k}`)]: EventMap[k][Accessor]
 }
 
-export type AfterInternalEmitArgs<O extends CommonDefinitionWithCaller> = O & {
-  hasOrigResult: false,
+export type AfterInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
   emitArgs:
     ThisArg<O>
     & Args<O>
@@ -115,8 +134,17 @@ export type AfterInternalEmitArgs<O extends CommonDefinitionWithCaller> = O & {
     & O["custom"]
 }
 
-export type AfterInternalErrorEmitArgs<O extends Omit<CommonDefinitionWithCaller, "options">> = Omit<O, "result"> & {
-  hasOrigResult: false,
+export type AfterInternalErrorEmitArgsNoArgs<O extends Omit<CommonDefinitionWithCaller, "options">> = {
+  emitArgs:
+    ThisArg<O>
+    & Caller<O>
+    & InvocationSymbol
+    & ParentInvocationSymbol
+    & ErrorT
+    & O["custom"]
+}
+
+export type AfterInternalErrorEmitArgs<O extends Omit<CommonDefinitionWithCaller, "options">> = {
   emitArgs:
     ThisArg<O>
     & Args<O>
@@ -128,12 +156,40 @@ export type AfterInternalErrorEmitArgs<O extends Omit<CommonDefinitionWithCaller
     & O["custom"]
 }
 
-export type BeforeInternalEmitArgs<O extends CommonDefinitionWithCaller> = Omit<O, "result"> & {
-  result: never[],
+export type AfterInternalEmitArgsNoArgs<O extends CommonDefinitionWithCaller> = {
+  emitArgs:
+    ThisArg<O>
+    & Result<O>
+    & Caller<O>
+    & InvocationSymbol
+    & ParentInvocationSymbol
+    & O["custom"]
+}
+
+export type BeforeInternalEmitArgsNoArgs<O extends CommonDefinitionWithCaller> = {
+  emitArgs:
+    ThisArg<O>
+    & Caller<O>
+    & ParentInvocationSymbol
+    & InvocationSymbol
+    & O["custom"]
+}
+
+export type BeforeInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
   emitArgs:
     ThisArg<O>
     & Args<O>
     & ArgsOrig<O>
+    & Caller<O>
+    & ParentInvocationSymbol
+    & InvocationSymbol
+    & O["custom"]
+}
+
+export type BeforeInternalEmitArgsNoArgsOrig<O extends CommonDefinitionWithCaller> = {
+  emitArgs:
+    ThisArg<O>
+    & Args<O>
     & Caller<O>
     & ParentInvocationSymbol
     & InvocationSymbol
@@ -145,7 +201,7 @@ export type CommonDefinition = {
   thisArg: any,
   custom?: Record<string, any>
   isPromise?: boolean,
-  options: any
+  options?: any
 };
 
 export type CommonDefinitionWithCaller = CommonDefinition & {

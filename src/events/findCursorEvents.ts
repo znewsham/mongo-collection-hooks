@@ -32,7 +32,6 @@ export type BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema> = {
   }>,
 }
 
-
 type BeforeAfterErrorFindCursorEventDefinitions<TSchema> = BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema>
   & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
 

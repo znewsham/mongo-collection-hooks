@@ -1,4 +1,4 @@
-import { getHookedCursor } from "./fakeFindCursor.js";
+import { getHookedCursor } from "./fakeAggregationCursor.js";
 import {
   hookInParallel as baseHookInParallel,
   hooksChain as baseHooksChain,
@@ -6,18 +6,18 @@ import {
 } from "../helpers.js";
 
 /**
- * @typedef {import("../src/hookedFindCursor.js").HookedFindCursor<TSchema>} HookedFindCursor<TSchema>
+ * @typedef {import("../src/hookedAggregationCursor.ts").HookedAggregationCursor<TSchema>} HookedAggregationCursor<TSchema>
  * @template {any} TSchema
  */
 /**
- * @typedef {import("mongodb").FindCursor<TSchema>} FindCursor<TSchema>
+ * @typedef {import("mongodb").AggregationCursor<TSchema>} AggregationCursor<TSchema>
  * @template {any} TSchema
  */
 /**
  * @callback HookTestCallback
  * @param {{
- *   hookedCursor: HookedFindCursor<any>,
- *   fakeCursor: FakeFindCursor
+ *   hookedCursor: HookedAggregationCursor<any>,
+ *   fakeCursor: FakeAggregationCursor
  * }} arg0
  */
 /**
@@ -41,5 +41,5 @@ export async function hooksChain(hookName, chainKey, fn, hookResults = ["Hello",
 
 
 export function declareSimpleTests(name, args, expected, data) {
-  return baseDeclareSimpleTests(name, args, expected, data, getHookedCursor, "find");
+  return baseDeclareSimpleTests(name, args, expected, data, getHookedCursor, "aggregation");
 }

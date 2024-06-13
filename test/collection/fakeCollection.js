@@ -1,7 +1,7 @@
 import { compileMongoQuery } from "mongo-query-compiler";
 import { LocalCollection } from "@blastjs/minimongo/dist/local_collection.js";
 import { FakeFindCursor } from "../findCursor/fakeFindCursor.js";
-import { FakeAggregationCursor } from "../aggregateCursor/fakeAggregateCursor.js";
+import { FakeAggregationCursor } from "../aggregationCursor/fakeAggregationCursor.js";
 
 
 function safeCompile(filter) {

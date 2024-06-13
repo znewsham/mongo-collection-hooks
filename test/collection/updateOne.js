@@ -1,7 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hooksChain } from "./helpers.js";
-
+import { assertImplements } from "../helpers.js";
 
 export function defineUpdateOne() {
   describe("updateOne", () => {
@@ -92,6 +92,66 @@ export function defineUpdateOne() {
       });
       await hookedCollection.updateOne({}, { $set: { a: 1 } });
       assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
+    });
+
+    it("should call the hooks with the correct arguments", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
+      const beforeUpdateMock = mock.fn();
+      const beforeUpdateOneMock = mock.fn();
+      const afterUpdateMock = mock.fn();
+      const afterUpdateOneMock = mock.fn();
+      hookedCollection.on("before.update", beforeUpdateMock);
+      hookedCollection.on("after.update.success", afterUpdateMock);
+      hookedCollection.on("before.updateOne", beforeUpdateOneMock);
+      hookedCollection.on("after.updateOne.success", afterUpdateOneMock);
+      await hookedCollection.updateOne({ _id: "test" }, { $set: { field: "value" } });
+      assertImplements(beforeUpdateMock.mock.calls[0].arguments, [{
+        args: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        argsOrig: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        caller: "updateOne",
+        filterMutator: {
+          filter: { _id: "test" },
+          mutator: { $set: { field: "value" } }
+        },
+        filterMutatorOrig: {
+          filter: { _id: "test" },
+          mutator: { $set: { field: "value" } }
+        },
+        _id: "test",
+        thisArg: hookedCollection
+      }], "called the beforeUpdate hook correctly");
+      assertImplements(beforeUpdateOneMock.mock.calls[0].arguments, [{
+        args: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        argsOrig: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        thisArg: hookedCollection
+      }], "called the beforeUpdateOne hook correctly");
+      assertImplements(afterUpdateOneMock.mock.calls[0].arguments, [{
+        args: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        argsOrig: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        result: {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        },
+        resultOrig: {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        },
+        thisArg: hookedCollection
+      }], "called the afterUpdateOneMock hook correctly");
+
+      assertImplements(afterUpdateMock.mock.calls[0].arguments, [{
+        args: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        argsOrig: [{ _id: "test" }, { $set: { field: "value" } }, undefined],
+        filterMutator: {
+          filter: { _id: "test" },
+          mutator: { $set: { field: "value" } }
+        },
+        result: {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        },
+        resultOrig: {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        },
+        thisArg: hookedCollection
+      }], "called the afterUpdate hook correctly");
     });
   });
 }

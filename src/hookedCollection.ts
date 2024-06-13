@@ -105,7 +105,7 @@ export class HookedCollection<
   }
 
   aggregate<T extends Document>(pipeline: Document[], options?: AmendedAggregateOptions): AggregationCursor<T> {
-    const invocationSymbol = Symbol();
+    const invocationSymbol = Symbol("aggregate");
     const [chainedPipeline, chainedOptions] = this.#ee.callSyncChainWithKey(
       "before.aggregate",
       {
@@ -128,6 +128,7 @@ export class HookedCollection<
             .filter(name => AggregateCursorEventsSet.has(name as keyof AggregationCursorHookedEventMap<any>))
             .map(name => [name, this.#ee.awaitableListeners(name)])
           ),
+          interceptExecute: this.#interceptExecute
         }
       ) as unknown as HookedAggregationCursorInterface<T>;
 
@@ -207,8 +208,8 @@ export class HookedCollection<
     return this.#collection.find() as unknown as FindCursor<T>;
   }
 
-  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: AmendedFindOptions<TSchema>): HookedFindCursor<T> {
-    const invocationSymbol = Symbol();
+  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: AmendedFindOptions<TSchema, "before.find">): HookedFindCursor<T> {
+    const invocationSymbol = Symbol("find");
     const [chainedFilter, chainedOptions] = this.#ee.callSyncChainWithKey(
       Events.before.find,
       {
@@ -221,7 +222,6 @@ export class HookedCollection<
     );
     try {
       const actualCursor = this.#find<T>(chainedFilter, chainedOptions);
-
       // we need as X here because it's hard (impossible) to make the args aware of the custom T used by find vs TSchema of the collection
       let cursor = new HookedFindCursor(
         chainedFilter,
@@ -234,7 +234,7 @@ export class HookedCollection<
             this.#ee.eventNames()
             .filter(name => FindCursorEventsSet.has(name as keyof FindCursorHookedEventMap<any>))
             .map(name => [name, this.#ee.awaitableListeners(name)])
-          ) as Record<string, HookedListenerCallback<EventNames & typeof FindCursorEventsSet, CollectionHookedEventMap<TSchema>>>,
+          ) as Record<string, HookedListenerCallback<EventNames & keyof CollectionHookedEventMap<any>, CollectionHookedEventMap<TSchema>>[]>,
           invocationOptions: options
         }
       ) as HookedFindCursorInterface<T>;
@@ -279,7 +279,7 @@ export class HookedCollection<
 
   async #tryCatchEmit<
     BEAD extends CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>,
-    T extends (callArgs: BEAD[IE]["before"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: BEAD[IE]["before"]["returns"] }) => Promise<any>,
+    T extends (callArgs: BEAD[IE]["before"]["emitArgs"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: BEAD[IE]["before"]["returns"] }) => Promise<any>,
     IE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>,
     EA extends BEAD[IE]["before"]["emitArgs"],
     OEA extends Omit<EA, "invocationSymbol" | "thisArg">
@@ -288,7 +288,7 @@ export class HookedCollection<
     emitArgs: OEA,
     beforeChainKey: keyof OEA,
     fn: T,
-    invocationOptions: StandardInvokeHookOptions<`before.${IE}` | `after.${IE}.success`, CollectionHookedEventMap<TSchema>> | undefined
+    invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined
   ): Promise<Awaited<ReturnType<T>>> {
     let {
       args,
@@ -319,7 +319,7 @@ export class HookedCollection<
     )
   }
 
-  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions) {
+  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions<CollectionHookedEventMap<TSchema>>) {
     const argsOrig = [doc, options] as const;
     return this.#tryCatchEmit(
       InternalEvents.insertOne,
@@ -348,24 +348,30 @@ export class HookedCollection<
   }
 
   insertMany(docs: OptionalUnlessRequiredId<TSchema>[], options?: AmendedBulkWriteOptions) {
+    const argsOrig = [docs, options] as const;
     return this.#tryCatchEmit(
       InternalEvents.insertMany,
-      { args: [docs, options] },
+      { args: argsOrig },
       "args",
       async ({
         invocationSymbol: parentInvocationSymbol
       }) => {
-        const hasBefore = this.hasEvents(Events.before.insert);
-        const hasAfter = this.hasEvents(Events.afterSuccess.insert);
+        const beforeHooks = this.#ee.relevantAwaitableListeners(Events.before.insert, options);
+        const afterHooks = this.#ee.relevantAwaitableListeners(Events.afterSuccess.insert, options);
+        const afterErrorHooks = this.#ee.relevantAwaitableListeners(Events.afterError.insert, options);
+        const hasBefore = !!beforeHooks.length;
+        const hasAfter = !!afterHooks.length;
+        const hasAfterError = !!afterErrorHooks.length;
         if (!hasBefore && !hasAfter) {
           return this.#collection.insertMany(docs, options);
         }
         else {
           const invocationSymbols = new Map<string, symbol>();
           const docMap = new Map<symbol, OptionalUnlessRequiredId<TSchema>>();
+          let chainedDocs = docs;
           if (hasBefore) {
-            docs = await Promise.all(docs.map(async (doc, index) => {
-              const invocationSymbol = Symbol();
+            chainedDocs = await Promise.all(docs.map(async (doc, index) => {
+              const invocationSymbol = Symbol("insert");
               docMap.set(invocationSymbol, doc);
               invocationSymbols.set(`${index}`, invocationSymbol);
               const ret = await this.#ee.callAwaitableChainWithKey(
@@ -375,7 +381,7 @@ export class HookedCollection<
                   doc,
                   parentInvocationSymbol,
                   args: [docs, options],
-                  argsOrig: [docs, options],
+                  argsOrig,
                   invocationSymbol,
                   thisArg: this
                 },
@@ -385,12 +391,39 @@ export class HookedCollection<
               return ret;
             }));
           }
-          let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>> = this.#collection.insertMany(docs, options);
+          let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>>;
+          try {
+            ret = this.#collection.insertMany(docs, options);
+            if (hasAfterError) {
+              ret = await ret;
+            }
+          }
+          catch (e) {
+            if (hasAfterError) {
+              // TODO: when ordered=true, some inserts may have succeeded.
+              // We'd need to determine the ones that did, call the success
+              await Promise.all(docs.map((doc, i) => this.#ee.callAllAwaitableInParallel(
+                {
+                  args: [docs, options],
+                  argsOrig,
+                  caller: "insertMany",
+                  doc,
+                  error: e,
+                  invocationSymbol: invocationSymbols.get(`${i}`) as symbol,
+                  parentInvocationSymbol,
+                  thisArg: this
+                },
+                undefined,
+                Events.afterError.insert
+              )));
+            }
+            throw e;
+          }
           if (hasAfter) {
             const retToUse = await ret;
             ret = retToUse;
             await Promise.all(Object.entries(ret.insertedIds).map(([indexString, insertedId]) => {
-              const invocationSymbol = invocationSymbols.get(indexString) || Symbol();
+              const invocationSymbol = invocationSymbols.get(indexString) || Symbol("insert");
               const doc = docMap.get(invocationSymbol);
               if (doc === undefined) {
                 throw new Error("Impossible - we got an afterhook for a doc that wasn't inserted");
@@ -460,7 +493,7 @@ export class HookedCollection<
     perDocFn: T,
     noListenersFn: T1,
     limit: number | undefined,
-    invocationOptions?: StandardInvokeHookOptions<"before.delete" | "after.delete.success" | "after.delete.error", CollectionHookedEventMap<TSchema>>
+    invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.delete" | "after.delete.success" | "after.delete.error">
   ): Promise<DeleteResult> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
@@ -490,7 +523,7 @@ export class HookedCollection<
       deletedCount: 0
     };
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy);
-    const invocationSymbol = Symbol();
+    const invocationSymbol = Symbol("delete");
 
     // TODO: this isn't right - it wont actually run in order :shrug:
     const promiseFn = beforeEmitArgs.args[1]?.ordered ? Promise.all.bind(Promise) : Promise.allSettled.bind(Promise);
@@ -527,7 +560,7 @@ export class HookedCollection<
             invocationSymbol,
             _id,
             thisArg: this,
-            result,
+            result: partialResult,
           },
           "result",
           afterListeners,
@@ -572,7 +605,7 @@ export class HookedCollection<
     perDocFn: T,
     noListenersFn: T1,
     limit: number | undefined,
-    invocationOptions?: StandardInvokeHookOptions<"before.update" | "after.update.success" | "after.update.error", CollectionHookedEventMap<TSchema>>
+    invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.update" | "after.update.success" | "after.update.error">
   ): Promise<UpdateResult> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
@@ -639,7 +672,7 @@ export class HookedCollection<
     }
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy);
     const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false);
-    const invocationSymbol = Symbol();
+    const invocationSymbol = Symbol("update");
     const promises: any[] = [];
     do {
       if (isBeforeGreedy) {
@@ -670,7 +703,7 @@ export class HookedCollection<
               _id,
               getDocument: () => afterDocumentCache.getDocument(_id),
               thisArg: this,
-              result,
+              result: partialResult,
             },
             "result",
             afterListeners,

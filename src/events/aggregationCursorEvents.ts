@@ -5,23 +5,23 @@ import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInter
 
 
 export type BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema> = {
-  "aggregate.cursor.execute": CursorParams<HookedAggregationCursorInterface<any>, {
-    caller: "aggregate" | "aggregate.cursor.toArray" | "aggregate.cursor.forEach"
+  "aggregation.cursor.execute": CursorParams<HookedAggregationCursorInterface<any>, {
+    caller: "aggregate" | "aggregation.cursor.toArray" | "aggregation.cursor.forEach" | "aggregation.cursor.next" | "aggregation.cursor.asyncIterator"
   }>,
-  "aggregate.cursor.next": CursorParamsWithResult<HookedAggregationCursorInterface<any>, {
-    caller: "aggregate" | "aggregate.cursor.toArray" | "aggregate.cursor.forEach",
+  "aggregation.cursor.next": CursorParamsWithResult<HookedAggregationCursorInterface<any>, {
+    caller: "aggregate",
     result: TSchema | null
   }>,
-  "aggregate.cursor.toArray": CursorParamsWithResult<HookedAggregationCursorInterface<any>, {
+  "aggregation.cursor.toArray": CursorParamsWithResult<HookedAggregationCursorInterface<any>, {
     caller: "aggregate",
     result: TSchema[]
   }>,
-  "aggregate.cursor.forEach": CursorParamsWithArgs<HookedAggregationCursorInterface<any>, {
+  "aggregation.cursor.forEach": CursorParamsWithArgs<HookedAggregationCursorInterface<any>, {
     caller: "aggregate",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
   }>,
-  "aggregate.cursor.asyncIterator": CursorParams<HookedAggregationCursorInterface<any>, {
+  "aggregation.cursor.asyncIterator": CursorParams<HookedAggregationCursorInterface<any>, {
     caller: "aggregate",
     args: []
   }>,
