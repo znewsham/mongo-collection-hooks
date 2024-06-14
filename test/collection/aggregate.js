@@ -53,5 +53,43 @@ export function defineAggregate() {
       assert.strictEqual(afterHook1.mock.callCount(), 1);
       assert.strictEqual(afterHook2.mock.callCount(), 1);
     });
+    it("should call the correct hooks on success", () => {
+      const beforeHook = mock.fn();
+      const afterHook = mock.fn();
+      const errorHook = mock.fn();
+      const { hookedCollection } = getHookedCollection([]);
+      hookedCollection.on("before.aggregate", beforeHook);
+      hookedCollection.on("after.aggregate.success", afterHook);
+      hookedCollection.on("after.aggregate.error", errorHook);
+      hookedCollection.aggregate();
+      assert.strictEqual(beforeHook.mock.callCount(), 1);
+      assert.strictEqual(afterHook.mock.callCount(), 1);
+      assert.strictEqual(errorHook.mock.callCount(), 0);
+    });
+    it("should call the correct hooks on error", () => {
+      const beforeHook = mock.fn();
+      const afterHook = mock.fn();
+      const errorHook = mock.fn();
+      const { hookedCollection, fakeCollection } = getHookedCollection([]);
+      hookedCollection.on("before.aggregate", beforeHook);
+      hookedCollection.on("after.aggregate.success", afterHook);
+      hookedCollection.on("after.aggregate.error", errorHook);
+      mock.method(fakeCollection, "aggregate", () => {
+        throw new Error();
+      });
+      assert.throws(() => hookedCollection.aggregate());
+      assert.strictEqual(beforeHook.mock.callCount(), 1);
+      assert.strictEqual(afterHook.mock.callCount(), 0);
+      assert.strictEqual(errorHook.mock.callCount(), 1);
+    });
+
+    it("should pass on the relevant hooks to the cursor", () => {
+      const { hookedCollection } = getHookedCollection([]);
+      hookedCollection.on("after.aggregation.cursor.toArray.success", () => {});
+      hookedCollection.on("after.find.cursor.toArray.success", () => {});
+      const cursor = hookedCollection.aggregate();
+      assert.strictEqual(cursor.ee.awaitableListeners("after.find.cursor.toArray.success").length, 0);
+      assert.strictEqual(cursor.ee.awaitableListeners("after.aggregation.cursor.toArray.success").length, 1);
+    });
   });
 }

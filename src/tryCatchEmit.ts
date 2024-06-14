@@ -1,5 +1,5 @@
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
-import { HookedEventEmitter, internalEventToBeforeAfterKey, ChainedCallbackEventMapWithCaller } from "./events/index.js";
+import { HookedEventEmitter, internalEventToBeforeAfterKey, ChainedCallbackEventMapWithCaller, SkipDocument } from "./events/index.js";
 
 
 // don't hate the player, hate typescript :|. This Horrible function does a relatively good job of enforcing types externally
@@ -81,6 +81,10 @@ export function getTryCatch<
     try {
       let result = await fn({ invocationSymbol, ...(chainedArgs && { beforeHooksResult: chainedArgs })});
       gotResult = true;
+      // this is super hacky - it's mostly for the insert/delete/update events.
+      if (chainedArgs === SkipDocument) {
+        return result;
+      }
       if (chainResult) {
         const chainedResult = await ee.callAllAwaitableChainWithKey(
           {

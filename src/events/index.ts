@@ -1,8 +1,8 @@
 import type {
   Document
 } from "mongodb"
-import { ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
-import { NestedProjectionOfTSchema } from "./helpersTypes.js";
+import { CallbackAndOptionsOfEm, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
+import { NestedProjectionOfTSchema, SkipDocument } from "./helpersTypes.js";
 import { AllCollectionEventDefinitions, BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions } from "./collectionEvents.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
@@ -26,7 +26,7 @@ export { HookedAggregationCursorInterface } from "./hookedAggregationCursorInter
 export { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 
 export { NestedProjectionOfTSchema, CollectionBeforeAfterErrorEventDefinitions }
-
+export { SkipDocument };
 
 
 type _BeforeAfterEventNames = keyof BeforeAfterErrorCollectionEventDefinitions<Document>
@@ -50,7 +50,7 @@ export type EventNames<limit extends _EventNames = _EventNames> = _EventNames & 
 
 
 export type PartialCallbackMap<K extends keyof EM, EM extends ChainedCallbackEventMap> = {
-  [k in K]?: ChainedListenerCallback<K, EM>[]
+  [k in K]?: CallbackAndOptionsOfEm<EM, K>[]
 }
 
 
@@ -66,7 +66,6 @@ export class HookedEventEmitter<HEM extends ChainedCallbackEventMapWithCaller> e
   }
 }
 
-
 type SelfOneOrMany<T extends string> = T | `${T}One` | `${T}Many`;
 
 function selfOneOrMany<T extends string>(keyword: T): SelfOneOrMany<T>[] {
@@ -76,7 +75,8 @@ function selfOneOrMany<T extends string>(keyword: T): SelfOneOrMany<T>[] {
 const cursorEvents = [
   "execute",
   "next",
-//  "close",
+  "rewind",
+  "close",
   "toArray",
   // "count",
   "forEach",

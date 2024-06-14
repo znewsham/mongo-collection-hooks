@@ -20,7 +20,7 @@ import type {
   ReplaceOptions
 } from "mongodb"
 
-import { AfterInternalEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult } from "./helpersTypes.js"
+import { AfterInternalEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument } from "./helpersTypes.js"
 import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
 import { Args, ArgsOrig, ErrorT, InvocationSymbol, Result, ThisArg } from "../commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
@@ -109,6 +109,7 @@ type AfterTopLevelErrorEmitArgs<O extends CommonDefinition> = {
 type InsertCommon<TSchema extends Document> = {
   caller: "insertOne" | "insertMany" | "updateOne" | "updateMany" | "replaceOne",
   args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema> | UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
+  beforeHookReturns: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument
   thisArg: HookedCollectionInterface<TSchema>,
   result: InsertOneResult<TSchema> | UpdateResult | Document,
   custom: {
@@ -123,6 +124,7 @@ type DeleteCommon<TSchema extends Document> = {
   args: DeleteCallArgs<TSchema>,
   thisArg: HookedCollectionInterface<TSchema>,
   result: DeleteResult,
+  beforeHookReturns: Filter<TSchema> | typeof SkipDocument,
   custom: {
     /** The ID of the document to be deleted */
     _id: InferIdType<TSchema>,
@@ -148,6 +150,7 @@ type UpdateCommon<TSchema extends Document> = {
   args: UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
   thisArg: HookedCollectionInterface<TSchema>,
   result: UpdateResult | Document,
+  beforeHookReturns: UpdateCommon<TSchema>["custom"]["filterMutator"] | typeof SkipDocument,
   custom: {
     /** The ID of the document being updated */
     _id: InferIdType<TSchema>,
@@ -245,7 +248,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     result: InsertManyResult<TSchema>
   }>,
   insert: {
-    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<InsertCommon<TSchema>>, "doc"> & { options: StandardDefineHookOptions, caller: InsertCommon<TSchema>["caller"] },
+    before: ReturnsNamedEmitArg<Pick<InsertCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<InsertCommon<TSchema>>, "doc"> & { options: StandardDefineHookOptions, caller: InsertCommon<TSchema>["caller"] },
     after: ReturnsResult<InsertCommon<TSchema>> & AfterInternalEmitArgs<InsertCommon<TSchema>> & { options: AfterInsertOptions<TSchema>, caller: InsertCommon<TSchema>["caller"] },
     error: NoReturns & AfterInternalErrorEmitArgs<InsertCommon<TSchema>> & { caller: InsertCommon<TSchema>["caller"] },
     caller: InsertCommon<TSchema>["caller"],
@@ -258,7 +261,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     options: StandardDefineHookOptions,
   }>,
   delete: {
-    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<DeleteCommon<TSchema> & FullDocument>, "filter"> & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
+    before: ReturnsNamedEmitArg<Pick<DeleteCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<DeleteCommon<TSchema> & FullDocument>, "filter"> & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
     after: ReturnsResult<DeleteCommon<TSchema>> & AfterInternalEmitArgs<DeleteCommon<TSchema> & PreviousDocument> & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     error: NoReturns & AfterInternalErrorEmitArgs<DeleteCommon<TSchema>> & { caller: DeleteCommon<TSchema>["caller"] },
     caller: DeleteCommon<TSchema>["caller"],
@@ -285,7 +288,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     result: UpdateResult<TSchema>
   }>,
   update: {
-    before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<UpdateCommon<TSchema> & FullDocument>, "filterMutator"> & { options: BeforeUpdateDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: UpdateCommon<TSchema>["caller"] },
+    before: ReturnsNamedEmitArg<Pick<UpdateCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<UpdateCommon<TSchema> & FullDocument>, "filterMutator"> & { options: BeforeUpdateDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: UpdateCommon<TSchema>["caller"] },
     after: ReturnsResult<UpdateCommon<TSchema>> & AfterInternalEmitArgs<UpdateCommon<TSchema> & PreviousDocument & FullDocument> & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     error: NoReturns & AfterInternalErrorEmitArgs<Omit<UpdateCommon<TSchema>, "custom"> & Omit<UpdateCommon<TSchema>["custom"], "getDocument">> & { caller: UpdateCommon<TSchema>["caller"] },
     caller: UpdateCommon<TSchema>["caller"],

@@ -1,6 +1,7 @@
+import { SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
-import { getHookedCollection, hooksChain } from "./helpers.js";
+import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 
 
 export function defineDeleteMany() {
@@ -13,6 +14,15 @@ export function defineDeleteMany() {
     it("should pass the result between after hooks correctly", async () => {
       const result = await hooksChain("after.deleteMany.success", "result", ({ hookedCollection }) => hookedCollection.deleteMany({ _id: "test" }));
       assert.deepEqual(result, "Hello World");
+    });
+
+    it("should call the error hook", async () => {
+      assert.rejects(
+        () => hookInParallel("after.deleteMany.error", "result", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "deleteMany", () => { throw new Error(); });
+          return hookedCollection.deleteMany({});
+        })
+      );
     });
 
     it("should allow access to the doc inside the hook", async () => {
@@ -42,6 +52,22 @@ export function defineDeleteMany() {
       hookedCollection.on("after.delete", () => {});
       await hookedCollection.deleteMany({});
       assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
+    });
+
+    it("Should skip documents correctly", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.delete", () => {
+        if (first) {
+          first = false;
+          return SkipDocument;
+        }
+      });
+      const afterDeleteMock = mock.fn();
+      hookedCollection.on("after.delete.success", afterDeleteMock);
+      const result = await hookedCollection.deleteMany({});
+      assert.deepEqual(result, { acknowledged: true, deletedCount: 1 });
+      assert.strictEqual(afterDeleteMock.mock.callCount(), 1, "Should have only called after.insert for one doc");
     });
   });
 }

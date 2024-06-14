@@ -25,5 +25,24 @@ export function defineNextTests() {
       const result = await hooksChain("after.aggregation.cursor.next.success", "result", ({ hookedCursor }) => hookedCursor.next());
       assert.deepEqual(result, "Hello World");
     });
+
+
+    it("should call the (generic) before hooks in parallel", async () => {
+      await hookInParallel("before.cursor.next", ({ hookedCursor }) => hookedCursor.next());
+    });
+
+    it("should call the (generic) error hooks in parallel", async () => {
+      await hookInParallel("after.cursor.next.error", async ({ hookedCursor, fakeCursor }) => {
+        mock.method(fakeCursor, "next", () => { throw new Error("test"); });
+        try {
+          await hookedCursor.next();
+        }
+        catch (e) {}
+      });
+    });
+    it("should pass the result between (generic) after hooks correctly", async () => {
+      const result = await hooksChain("after.cursor.next.success", "result", ({ hookedCursor }) => hookedCursor.next());
+      assert.deepEqual(result, "Hello World");
+    });
   });
 }

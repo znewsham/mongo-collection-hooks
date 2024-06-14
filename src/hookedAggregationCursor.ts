@@ -38,11 +38,19 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     this.#invocationOptions = invocationOptions;
     this.#interceptExecute = interceptExecute;
     Object.entries(events).forEach(([name, listeners]) => {
-      listeners.forEach(listener => this.#ee.addListener(
-        name as keyof AggregationCursorHookedEventMap<any>,
-        listener
-      ));
+      listeners.forEach(({ listener, options }) => {
+        this.#ee.addListener(
+          name as keyof AggregationCursorHookedEventMap<any>,
+          listener,
+          options
+        );
+      });
     });
+  }
+
+  // exposed for testing only
+  get ee() {
+    return this.#ee;
   }
 
   async #triggerInit() {
@@ -287,7 +295,68 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     });
   }
 
-  rewind(): void {
-    this.#cursor.rewind();
+  close() {
+    return this.#tryCatchEmit(
+      this.#ee,
+      () => this.#cursor.close(),
+      "aggregate",
+      undefined,
+      {
+        parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        thisArg: this
+      },
+      false,
+      false,
+      undefined,
+      this.#invocationOptions,
+      "aggregation.cursor.close",
+      "cursor.close"
+    );
+  }
+
+  rewind() {
+    const invocationSymbol = Symbol("aggregation.cursor.rewind");
+    this.#ee.callAllSyncChain(
+      {
+        invocationSymbol,
+        caller: "find",
+        parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        thisArg: this,
+      },
+      this.#invocationOptions,
+      Events.before["aggregation.cursor.rewind"],
+      Events.before["cursor.rewind"]
+    );
+
+    try {
+      this.#cursor.rewind();
+      this.#ee.callAllSyncChain(
+        {
+          thisArg: this,
+          caller: "find",
+          parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          invocationSymbol
+        },
+        this.#invocationOptions,
+        Events.afterSuccess["aggregation.cursor.rewind"],
+        Events.afterSuccess["cursor.rewind"],
+      );
+      return;
+    }
+    catch (e) {
+      this.#ee.callAllSyncChain(
+        {
+          error: e,
+          thisArg: this,
+          caller: "find",
+          parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          invocationSymbol
+        },
+        this.#invocationOptions,
+        Events.afterError["aggregation.cursor.rewind"],
+        Events.afterError["cursor.rewind"],
+      );
+      throw e;
+    }
   }
 }

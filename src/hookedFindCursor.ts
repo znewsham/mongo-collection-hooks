@@ -3,7 +3,19 @@ import { CallerType, Events, HookedEventEmitter, InternalEvents, PartialCallback
 import { AbstractHookedFindCursor } from "./abstractFindCursorImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
-import { BeforeAfterErrorFindCursorEventDefinitions, BeforeAfterErrorFindCursorFlatEventDefinitions, BeforeAfterErrorFindOnlyCursorEventDefinitions } from "./events/findCursorEvents.js";
+import { BeforeAfterErrorFindCursorEventDefinitions } from "./events/findCursorEvents.js";
+
+const t: PartialCallbackMap<
+keyof FindCursorHookedEventMap<Document>,
+FindCursorHookedEventMap<Document>
+> = {
+  "after.cursor.asyncIterator.error": [{
+    listener: (() => void 0),
+    options: {
+      tags: ["test"]
+    }
+  }]
+}
 
 interface HookedFindCursorOptions<TSchema> {
   transform?: (doc: TSchema) => any,
@@ -20,7 +32,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
   #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
   #findInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
-  #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next"> = "find";
+  #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next" | "find.cursor.close"> = "find";
   #cursor: FindCursor<TSchema>;
   #filter: Document;
   #interceptExecute: boolean;
@@ -42,12 +54,20 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     this.#currentInvocationSymbol = invocationSymbol;
     this.#invocationOptions = invocationOptions;
     Object.entries(events).forEach(([name, listeners]) => {
-      listeners.forEach(listener => this.#ee.addListener(
-        name as keyof FindCursorHookedEventMap<any>,
-        listener
-      ));
+      listeners.forEach(({ listener, options }) => {
+        this.#ee.addListener(
+          name as keyof FindCursorHookedEventMap<any>,
+          listener,
+          options
+        );
+      });
     });
     this.#interceptExecute = interceptExecute;
+  }
+
+  // exposed for testing only
+  get ee() {
+    return this.#ee;
   }
 
 
@@ -63,8 +83,69 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     });
   }
 
+  close() {
+    return this.#tryCatchEmit(
+      this.#ee,
+      () => this.#cursor.close(),
+      "find",
+      undefined,
+      {
+        parentInvocationSymbol: this.#findInvocationSymbol,
+        thisArg: this
+      },
+      false,
+      false,
+      undefined,
+      this.#invocationOptions,
+      "find.cursor.close",
+      "cursor.close"
+    );
+  }
+
   rewind() {
-    return this.#cursor.rewind();
+    const invocationSymbol = Symbol("find.cursor.rewind");
+    this.#ee.callAllSyncChain(
+      {
+        invocationSymbol,
+        caller: "find",
+        parentInvocationSymbol: this.#findInvocationSymbol,
+        thisArg: this,
+      },
+      this.#invocationOptions,
+      Events.before["find.cursor.rewind"],
+      Events.before["cursor.rewind"]
+    );
+
+    try {
+      this.#cursor.rewind();
+      this.#ee.callAllSyncChain(
+        {
+          thisArg: this,
+          caller: "find",
+          parentInvocationSymbol: this.#findInvocationSymbol,
+          invocationSymbol
+        },
+        this.#invocationOptions,
+        Events.afterSuccess["find.cursor.rewind"],
+        Events.afterSuccess["cursor.rewind"],
+      );
+      return;
+    }
+    catch (e) {
+      this.#ee.callAllSyncChain(
+        {
+          error: e,
+          thisArg: this,
+          caller: "find",
+          parentInvocationSymbol: this.#findInvocationSymbol,
+          invocationSymbol
+        },
+        this.#invocationOptions,
+        Events.afterError["find.cursor.rewind"],
+        Events.afterError["cursor.rewind"],
+      );
+      throw e;
+    }
   }
 
   async #triggerInit() {

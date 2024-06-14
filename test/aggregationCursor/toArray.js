@@ -25,5 +25,24 @@ export function defineToArrayTests() {
         catch (e) {}
       });
     });
+
+
+    it("should call the (generic) before hooks in parallel", async () => {
+      await hookInParallel("before.cursor.toArray", ({ hookedCursor }) => hookedCursor.toArray());
+    });
+
+    it("should call the (generic) error hooks in parallel", async () => {
+      await hookInParallel("after.cursor.toArray.error", async ({ hookedCursor, fakeCursor }) => {
+        mock.method(fakeCursor, "toArray", () => { throw new Error("test"); });
+        try {
+          await hookedCursor.toArray();
+        }
+        catch (e) {}
+      });
+    });
+    it("should pass the result between (generic) after hooks correctly", async () => {
+      const result = await hooksChain("after.cursor.toArray.success", "result", ({ hookedCursor }) => hookedCursor.toArray());
+      assert.deepEqual(result, "Hello World");
+    });
   });
 }

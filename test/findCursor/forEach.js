@@ -26,5 +26,23 @@ export function defineForEachTests() {
         catch (e) {}
       });
     });
+
+
+    it("should call the (generic) before hooks in parallel", async () => {
+      await hooksChain("before.cursor.forEach", "args", ({ hookedCursor }) => hookedCursor.forEach(() => {}), [[() => {}], [() => {}]]);
+    });
+
+    it("should call the (generic) error hooks in parallel", async () => {
+      await hookInParallel("after.cursor.forEach.error", async ({ hookedCursor, fakeCursor }) => {
+        mock.method(fakeCursor, "forEach", () => { throw new Error("test"); });
+        try {
+          await hookedCursor.forEach();
+        }
+        catch (e) {}
+      });
+    });
+    it("should pass the result between (generic) after hooks correctly", async () => {
+      await hookInParallel("after.cursor.forEach.success", ({ hookedCursor }) => hookedCursor.forEach(() => {}));
+    });
   });
 }

@@ -53,5 +53,43 @@ export function defineFind() {
       assert.strictEqual(afterHook1.mock.callCount(), 1);
       assert.strictEqual(afterHook2.mock.callCount(), 1);
     });
+    it("should call the correct hooks on success", () => {
+      const beforeHook = mock.fn();
+      const afterHook = mock.fn();
+      const errorHook = mock.fn();
+      const { hookedCollection } = getHookedCollection([]);
+      hookedCollection.on("before.find", beforeHook);
+      hookedCollection.on("after.find.success", afterHook);
+      hookedCollection.on("after.find.error", errorHook);
+      hookedCollection.find();
+      assert.strictEqual(beforeHook.mock.callCount(), 1);
+      assert.strictEqual(afterHook.mock.callCount(), 1);
+      assert.strictEqual(errorHook.mock.callCount(), 0);
+    });
+    it("should call the correct hooks on error", () => {
+      const beforeHook = mock.fn();
+      const afterHook = mock.fn();
+      const errorHook = mock.fn();
+      const { hookedCollection, fakeCollection } = getHookedCollection([]);
+      hookedCollection.on("before.find", beforeHook);
+      hookedCollection.on("after.find.success", afterHook);
+      hookedCollection.on("after.find.error", errorHook);
+      mock.method(fakeCollection, "find", () => {
+        throw new Error();
+      });
+      assert.throws(() => hookedCollection.find());
+      assert.strictEqual(beforeHook.mock.callCount(), 1);
+      assert.strictEqual(afterHook.mock.callCount(), 0);
+      assert.strictEqual(errorHook.mock.callCount(), 1);
+    });
+
+    it("should pass on the relevant hooks to the cursor", () => {
+      const { hookedCollection } = getHookedCollection([]);
+      hookedCollection.on("after.aggregation.cursor.toArray.success", () => {});
+      hookedCollection.on("after.find.cursor.toArray.success", () => {});
+      const cursor = hookedCollection.find();
+      assert.strictEqual(cursor.ee.awaitableListeners("after.find.cursor.toArray.success").length, 1);
+      assert.strictEqual(cursor.ee.awaitableListeners("after.aggregation.cursor.toArray.success").length, 0);
+    });
   });
 }

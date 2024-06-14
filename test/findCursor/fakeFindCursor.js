@@ -49,12 +49,20 @@ export class FakeFindCursor {
     }
   }
 
+  clone() {
+    return this;
+  }
+
   project() {
     return this;
   }
   map(transform) {
     this.#transform = transform;
     return this;
+  }
+
+  async close() {
+
   }
 }
 

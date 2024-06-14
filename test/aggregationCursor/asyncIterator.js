@@ -22,7 +22,7 @@ export function defineAsyncIteratorTests() {
       const { hookedCursor } = getHookedCursor(
         [1, 2, 3],
         {
-          "before.aggregation.cursor.asyncIterator": [calledMock]
+          "before.aggregation.cursor.asyncIterator": [{ listener: calledMock }]
         }
       );
       assert.deepEqual(await gatherFromIterator(hookedCursor), [1, 2, 3]);
@@ -33,7 +33,7 @@ export function defineAsyncIteratorTests() {
       const { hookedCursor } = getHookedCursor(
         [1, 2, 3],
         {
-          "after.aggregation.cursor.asyncIterator.success": [calledMock]
+          "after.aggregation.cursor.asyncIterator.success": [{ listener: calledMock }]
         }
       );
       assert.deepEqual(await gatherFromIterator(hookedCursor), [1, 2, 3]);
@@ -44,7 +44,7 @@ export function defineAsyncIteratorTests() {
       const { hookedCursor, fakeCursor } = getHookedCursor(
         [1, 2, 3],
         {
-          "after.aggregation.cursor.asyncIterator.error": [calledMock]
+          "after.aggregation.cursor.asyncIterator.error": [{ listener: calledMock }]
         }
       );
       mock.method(fakeCursor, Symbol.asyncIterator, () => { throw new Error("test"); });
@@ -69,8 +69,8 @@ export function defineAsyncIteratorTests() {
       });
       // @ts-expect-error
       const { hookedCursor, fakeCursor } = getHookedCursor([1, 2, 3], {
-        "before.aggregation.cursor.asyncIterator": [beforeMock],
-        "after.aggregation.cursor.asyncIterator.success": [afterMock]
+        "before.aggregation.cursor.asyncIterator": [{ listener: beforeMock }],
+        "after.aggregation.cursor.asyncIterator.success": [{ listener: afterMock }]
       });
       mock.method(fakeCursor, Symbol.asyncIterator, async function *iterator() {
         callOrder.push("fn");
@@ -123,8 +123,8 @@ export function defineAsyncIteratorTests() {
       });
       // @ts-expect-error
       const { hookedCursor } = getHookedCursor([1, 2, 3], {
-        "before.aggregation.cursor.asyncIterator": [beforeMock],
-        "after.aggregation.cursor.asyncIterator.success": [afterMock]
+        "before.aggregation.cursor.asyncIterator": [{ listener: beforeMock }],
+        "after.aggregation.cursor.asyncIterator.success": [{ listener: afterMock }]
       });
       await gatherFromIterator(hookedCursor);
       assert.ok(beforeSymbol !== undefined, "the before symbol was set");
@@ -151,9 +151,9 @@ export function defineAsyncIteratorTests() {
       });
       // @ts-expect-error
       const { hookedCursor, fakeCursor } = getHookedCursor([1, 2, 3], {
-        "before.aggregation.cursor.execute": [beforeMock],
-        "after.aggregation.cursor.execute.success": [afterMock],
-        "before.aggregation.cursor.asyncIterator": [setupMock]
+        "before.aggregation.cursor.execute": [{ listener: beforeMock }],
+        "after.aggregation.cursor.execute.success": [{ listener: afterMock }],
+        "before.aggregation.cursor.asyncIterator": [{ listener: setupMock }]
       });
       await gatherFromIterator(hookedCursor);
       assert.ok(beforeSymbol !== undefined, "the before symbol was set");

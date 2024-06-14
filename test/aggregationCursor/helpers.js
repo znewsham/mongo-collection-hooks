@@ -5,6 +5,8 @@ import {
   declareSimpleTests as baseDeclareSimpleTests
 } from "../helpers.js";
 
+export { getHookedCursor };
+
 /**
  * @typedef {import("../src/hookedAggregationCursor.ts").HookedAggregationCursor<TSchema>} HookedAggregationCursor<TSchema>
  * @template {any} TSchema

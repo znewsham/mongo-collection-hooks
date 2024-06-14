@@ -33,7 +33,7 @@ export type ChainedCallbackEntry<EMITARGS = any, CBARGS extends EMITARGS = EMITA
 export type ChainedCallbackEventMap = Record<string, ChainedCallbackEntry>
 type DefaultChainedCallbackEventMap = ChainedCallbackEventMap;
 
-type CallbackAndOptionsOfEm<EM extends ChainedCallbackEventMap, K extends keyof EM> = {
+export type CallbackAndOptionsOfEm<EM extends ChainedCallbackEventMap, K extends keyof EM> = {
   options?: EM[K]["options"],
   listener: ChainedListenerCallback<K, EM>
 }
@@ -127,10 +127,20 @@ export class ChainedAwaiatableEventEmitter<
     );
   }
 
-  callSyncChain<K extends keyof EM & keyof SYNCEM>(
-    eventName: K, // weird - but this is what enforces the keyof SYNCEM
+  callAllSyncChain<K extends keyof EM & keyof SYNCEM, MK extends keyof EM & keyof SYNCEM>(
     emitArgs: EM[K]["emitArgs"],
-    options: StandardInvokeHookOptions<EM, K> | undefined,
+    options: StandardInvokeHookOptions<EM, K | MK> | undefined,
+    masterEventName: MK,
+    ...otherEventNames: K[]
+  ): void {
+    const listeners = [masterEventName, ...otherEventNames].flatMap(eventName => this.relevantAwaitableListeners(eventName, options));
+    listeners.forEach(listener => listener(emitArgs));
+  }
+
+  callSyncChain<K extends keyof EM & keyof SYNCEM>(
+    eventName: K,
+    emitArgs: EM[K]["emitArgs"],
+    options?: StandardInvokeHookOptions<EM, K> | undefined,
   ): void {
     const listeners = this.relevantAwaitableListeners(eventName, options);
     listeners.forEach(listener => listener(emitArgs));
@@ -177,6 +187,18 @@ export class ChainedAwaiatableEventEmitter<
       chainKey,
       origChainedValue,
       this.relevantAwaitableListeners(eventName, options)
+    );
+  }
+
+  async callAwaitableInParallel<K extends keyof EM>(
+    eventName: K,
+    emitArgs: EM[K]["emitArgs"],
+    options?: StandardInvokeHookOptions<EM, K>,
+  ) {
+    return this.callAllAwaitableInParallel(
+      emitArgs,
+      options,
+      eventName,
     );
   }
 
@@ -263,6 +285,17 @@ export class ChainedAwaiatableEventEmitter<
     }
     // @ts-expect-error
     return filterHooksWithOptions(eventName, array, options);
+  }
+
+  awaitableListenersWithOptions<K extends keyof EM>(
+    eventName: K
+  ): CallbackAndOptionsOfEm<EM, K>[] {
+    const array = this.#listenersMap.get(eventName);
+    if (!array) {
+      return [];
+    }
+    // @ts-expect-error
+    return [...array];
   }
 
   awaitableListeners<K extends keyof EM>(

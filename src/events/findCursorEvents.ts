@@ -30,15 +30,22 @@ export type BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema> = {
   "find.cursor.asyncIterator": CursorParams<HookedFindCursorInterface<TSchema>, {
     caller: "find"
   }>,
+  "find.cursor.rewind": CursorParams<HookedFindCursorInterface<TSchema>, {
+    caller: "find",
+    isPromise: false
+  }>,
+  "find.cursor.close": CursorParams<HookedFindCursorInterface<TSchema>, {
+    caller: "find"
+  }>
 }
 
 export type BeforeAfterErrorFindCursorEventDefinitions<TSchema> = BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema>
   & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
 
+
 type FindCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "before", "before">
 type FindCursorAfterEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "after", "success">
 type FindCursorErrorEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "error", "error">
-
 
 export type BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema> = FindCursorBeforeEventDefinitions<TSchema>
   & FindCursorAfterEventDefinitions<TSchema>
@@ -48,3 +55,4 @@ export type BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema> = FindCursor
 type FindCursorCallbackArgsAndReturn<TSchema> = BeforeAfterCallbackArgsAndReturn<BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema>>
 
 export type FindCursorHookedEventMap<TSchema> = FindCursorCallbackArgsAndReturn<TSchema>;
+

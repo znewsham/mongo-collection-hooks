@@ -28,7 +28,7 @@ export async function hooksChain(hookName, chainKey, fn, getHookedCursor, hookRe
     [1, 2, 3],
     {
       [hookName]: [
-        async ({
+        { listener: async ({
           [chainKey]: value,
           [`${chainKey}Orig`]: valueOrig
         }) => {
@@ -37,8 +37,8 @@ export async function hooksChain(hookName, chainKey, fn, getHookedCursor, hookRe
           assert.deepEqual(valueOrig, value, "In the first hook, the value and orig value match");
           await setTimeout(100);
           return hookResults[0];
-        },
-        ({
+        }},
+        { listener: ({
           [chainKey]: value,
           [`${chainKey}Orig`]: valueOrig
         }) => {
@@ -46,7 +46,7 @@ export async function hooksChain(hookName, chainKey, fn, getHookedCursor, hookRe
           assert.notDeepEqual(value, valueOrig);
           assert.deepEqual(cachedValueOrig, valueOrig, "In the second hook");
           return hookResults[1];
-        }
+        } }
       ]
     }
   );
@@ -67,13 +67,13 @@ export async function hookInParallel(hookName, fn, getHookedCursor) {
     [1, 2, 3],
     {
       [hookName]: [
-        async () => {
+        { listener: async () => {
           first = performance.now();
           await setTimeout(100);
-        },
-        () => {
+        }},
+        { listener: () => {
           second = performance.now();
-        }
+        }}
       ]
     }
   );
@@ -93,7 +93,7 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     const calledMock = mock.fn(() => {});
     // @ts-expect-error
     const { hookedCursor } = getHookedCursor(data, {
-      [`before.${cursorType}.cursor.${name}`]: [calledMock]
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: calledMock }]
     });
     const actual = await hookedCursor[name](...args);
     assert.deepEqual(actual, expected, "should get the correct result");
@@ -104,7 +104,7 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     const calledMock = mock.fn(() => {});
     // @ts-expect-error
     const { hookedCursor } = getHookedCursor(data, {
-      [`after.${cursorType}.cursor.${name}.success`]: [calledMock]
+      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: calledMock }]
     });
     const actual = await hookedCursor[name](...args);
     assert.deepEqual(actual, expected, "should get the correct result");
@@ -115,11 +115,31 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     const calledMock = mock.fn(() => {});
     // @ts-expect-error
     const { hookedCursor } = getHookedCursor(data, {
-      [`before.${cursorType}.cursor.${name}`]: [calledMock],
-      [`after.${cursorType}.cursor.${name}.success`]: [calledMock]
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: calledMock }],
+      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: calledMock }]
     });
     const actual = await hookedCursor[name](...args);
     assert.deepEqual(actual, expected, "should get the correct result");
+    assert.strictEqual(calledMock.mock.callCount(), 2, "should call the hook");
+  });
+
+  it("should work with both before and error hooks", async () => {
+    const calledMock = mock.fn(() => {});
+    // @ts-expect-error
+    const { hookedCursor, fakeCursor } = getHookedCursor(data, {
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: calledMock }],
+      [`after.${cursorType}.cursor.${name}.error`]: [{ listener: calledMock }]
+    });
+    mock.method(fakeCursor, name, () => {
+      throw new Error();
+    });
+    try {
+      await hookedCursor[name](...args);
+      assert.fail("We should have thrown an error");
+    }
+    catch (e) {
+
+    }
     assert.strictEqual(calledMock.mock.callCount(), 2, "should call the hook");
   });
 
@@ -133,8 +153,8 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     });
     // @ts-expect-error
     const { hookedCursor, fakeCursor } = getHookedCursor(data, {
-      [`before.${cursorType}.cursor.${name}`]: [beforeMock],
-      [`after.${cursorType}.cursor.${name}.success`]: [afterMock]
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: beforeMock }],
+      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: afterMock }]
     });
     mock.method(fakeCursor, name, async () => {
       callOrder.push("fn");
@@ -148,8 +168,8 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     const afterErrorMock = mock.fn(async () => {});
     // @ts-expect-error
     const { hookedCursor, fakeCursor } = getHookedCursor(data, {
-      [`after.${cursorType}.cursor.${name}.success`]: [afterSuccessMock],
-      [`after.${cursorType}.cursor.${name}.error`]: [afterErrorMock]
+      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: afterSuccessMock }],
+      [`after.${cursorType}.cursor.${name}.error`]: [{ listener: afterErrorMock }]
     });
     mock.method(fakeCursor, name, async () => {
       throw new Error(name);
@@ -171,8 +191,8 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     const afterErrorMock = mock.fn(async () => {});
     // @ts-expect-error
     const { hookedCursor } = getHookedCursor(data, {
-      [`after.${cursorType}.cursor.${name}.success`]: [() => { throw new Error(name); }, afterSuccessMock],
-      [`after.${cursorType}.cursor.${name}.error`]: [afterErrorMock]
+      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: () => { throw new Error(name); } }, { listener: afterSuccessMock }],
+      [`after.${cursorType}.cursor.${name}.error`]: [{ listener: afterErrorMock }]
     });
 
     try {
@@ -197,8 +217,8 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     });
     // @ts-expect-error
     const { hookedCursor } = getHookedCursor(data, {
-      [`before.${cursorType}.cursor.${name}`]: [beforeMock],
-      [`after.${cursorType}.cursor.${name}.success`]: [afterMock]
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: beforeMock }],
+      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: afterMock }]
     });
     await hookedCursor[name](...args);
     assert.ok(beforeSymbol !== undefined, "the before symbol was set");
@@ -216,8 +236,8 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     });
     // @ts-expect-error
     const { hookedCursor, fakeCursor } = getHookedCursor(data, {
-      [`before.${cursorType}.cursor.${name}`]: [beforeMock],
-      [`after.${cursorType}.cursor.${name}.error`]: [afterMock]
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: beforeMock }],
+      [`after.${cursorType}.cursor.${name}.error`]: [{ listener: afterMock }]
     });
     mock.method(fakeCursor, name, async () => {
       throw new Error(name);
@@ -234,7 +254,7 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     assert.strictEqual(beforeSymbol, afterSymbol, "The symbols should match");
   });
 
-  if (name !== "count") {
+  if (name !== "count" && name !== "close") {
     it("should record the correct caller for execute and provide the parentInvocationSymbol before and after", async () => {
       let beforeExecuteSymbol;
       let afterExecuteSymbol;
@@ -255,9 +275,9 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
       });
       // @ts-expect-error
       const { hookedCursor, fakeCursor } = getHookedCursor(data, {
-        [`before.${cursorType}.cursor.execute`]: [beforeMock],
-        [`after.${cursorType}.cursor.execute.success`]: [afterMock],
-        [`before.${cursorType}.cursor.${name}`]: [setupMock]
+        [`before.${cursorType}.cursor.execute`]: [{ listener: beforeMock }],
+        [`after.${cursorType}.cursor.execute.success`]: [{ listener: afterMock }],
+        [`before.${cursorType}.cursor.${name}`]: [{ listener: setupMock }]
       });
       await hookedCursor[name](...args);
       assert.ok(beforeSymbol !== undefined, "the before symbol was set");

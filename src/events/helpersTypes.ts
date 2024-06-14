@@ -65,8 +65,8 @@ export type NestedProjectionOfTSchema<TObj extends object> = {
 
 
 
-export type ReturnsNamedEmitArg<O extends {emitArgs: {[k in Key]: any}, isPromise?: boolean}, Key extends string> = O & {
-  returns: O["emitArgs"][Key],
+export type ReturnsNamedEmitArg<O extends {emitArgs: {[k in Key]: any}, isPromise?: boolean, beforeHookReturns?: any}, Key extends string> = O & {
+  returns: O extends { beforeHookReturns: any } ? O["beforeHookReturns"] : O["emitArgs"][Key],
   returnEmitName: Key,
   isPromise: O["isPromise"] extends false ? false : true
 }
@@ -111,6 +111,8 @@ export type BeforeAfterCallbackArgsAndReturn<
     caller: BIM[k] extends { caller: any } ? BIM[k]["caller"] : undefined
   }
 }
+
+export const SkipDocument = Symbol("SkipDocument");
 
 
 export type ExtractEventDefinitions<

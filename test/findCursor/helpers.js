@@ -5,6 +5,7 @@ import {
   declareSimpleTests as baseDeclareSimpleTests
 } from "../helpers.js";
 
+export { getHookedCursor };
 /**
  * @typedef {import("../src/hookedFindCursor.js").HookedFindCursor<TSchema>} HookedFindCursor<TSchema>
  * @template {any} TSchema

@@ -23,4 +23,12 @@ export type BeforeAfterErrorGenericCursorEventDefinitions<TSchema> = {
     caller: "find" | "aggregate",
     result: never,
   }>,
+  "cursor.rewind": CursorParams<HookedFindCursorInterface<TSchema> | HookedAggregationCursorInterface<TSchema>, {
+    caller: "find",
+    isPromise: false,
+  }>
+  "cursor.close": CursorParams<HookedFindCursorInterface<TSchema> | HookedAggregationCursorInterface<TSchema>, {
+    caller: "find" | "aggregate",
+    isPromise: false,
+  }>
 }

@@ -25,6 +25,13 @@ export type BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema> = {
     caller: "aggregate",
     args: []
   }>,
+  "aggregation.cursor.rewind": CursorParams<HookedAggregationCursorInterface<TSchema>, {
+    caller: "find",
+    isPromise: false,
+  }>,
+  "aggregation.cursor.close": CursorParams<HookedAggregationCursorInterface<TSchema>, {
+    caller: "aggregate"
+  }>
 }
 
 export type BeforeAfterErrorAggregateCursorEventDefinitions<TSchema> = BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema>

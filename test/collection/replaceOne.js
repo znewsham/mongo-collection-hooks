@@ -1,6 +1,7 @@
+import { SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
-import { getHookedCollection, hooksChain } from "./helpers.js";
+import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 
 
 export function defineReplaceOne() {
@@ -13,6 +14,15 @@ export function defineReplaceOne() {
     it("should pass the result between after hooks correctly", async () => {
       const result = await hooksChain("after.replaceOne.success", "result", ({ hookedCollection }) => hookedCollection.replaceOne({ _id: "test" }, { thing: "hello" }));
       assert.deepEqual(result, "Hello World");
+    });
+
+    it("should call the error hook", async () => {
+      assert.rejects(
+        () => hookInParallel("after.replaceOne.error", "result", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "replaceOne", () => { throw new Error(); });
+          return hookedCollection.replaceOne({});
+        })
+      );
     });
 
     it("should call insert hooks when a document is upserted", async () => {
@@ -33,6 +43,18 @@ export function defineReplaceOne() {
       );
       assert.strictEqual(insertMock.mock.callCount(), 2, "We called the insert hook once");
       assert.strictEqual(updateMock.mock.callCount(), 0, "we didn't call the update hook");
+    });
+  });
+
+  it("Should skip documents correctly", async () => {
+    const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
+    hookedCollection.on("before.update", () => SkipDocument);
+    const afterUpdateMock = mock.fn();
+    hookedCollection.on("after.update.success", afterUpdateMock);
+    const result = await hookedCollection.replaceOne({ _id: "test" }, { a: 1 });
+    assert.strictEqual(afterUpdateMock.mock.callCount(), 0, "Should have only called after.insert for one doc");
+    assert.deepEqual(result, {
+      acknowledged: false, matchedCount: 1, modifiedCount: 0, upsertedCount: 0, upsertedId: null
     });
   });
 }

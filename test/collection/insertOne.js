@@ -1,6 +1,7 @@
+import { SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
-import { getHookedCollection, hooksChain } from "./helpers.js";
+import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 import { assertImplements } from "../helpers.js";
 
 
@@ -14,6 +15,15 @@ export function defineInsertOne() {
     it("should pass the result between after hooks correctly", async () => {
       const result = await hooksChain("after.insertOne.success", "result", ({ hookedCollection }) => hookedCollection.insertOne({ _id: "test" }));
       assert.deepEqual(result, "Hello World");
+    });
+
+    it("should call the error hook", async () => {
+      assert.rejects(
+        () => hookInParallel("after.insertOne.error", "result", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "insertOne", () => { throw new Error(); });
+          return hookedCollection.insertOne({});
+        })
+      );
     });
 
     it("should call the hooks with the correct arguments", async () => {
@@ -66,6 +76,16 @@ export function defineInsertOne() {
         },
         thisArg: hookedCollection
       }], "called the afterUpdate hook correctly");
+    });
+
+    it("Should skip documents correctly", async () => {
+      const { hookedCollection } = getHookedCollection();
+      hookedCollection.on("before.insert", () => SkipDocument);
+      const afterInsertMock = mock.fn();
+      hookedCollection.on("after.insert.success", afterInsertMock);
+      const result = await hookedCollection.insertOne({ _id: "test" });
+      assert.strictEqual(afterInsertMock.mock.callCount(), 0, "Should have only called after.insert for one doc");
+      assert.deepEqual(result, { acknowledged: false, insertedId: null });
     });
   });
 }

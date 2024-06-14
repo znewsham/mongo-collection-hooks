@@ -14,6 +14,7 @@ import type {
   InferIdType,
   ObjectId,
   DeleteResult,
+  InsertOneResult,
 } from 'mongodb';
 import { HookedFindCursor } from "./hookedFindCursor.js";
 
@@ -42,7 +43,8 @@ import {
   HookedAggregationCursorInterface,
   HookedFindCursorInterface,
   FindCursorHookedEventMap,
-  AggregationCursorHookedEventMap
+  AggregationCursorHookedEventMap,
+  SkipDocument
 } from "./events/index.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
@@ -126,7 +128,7 @@ export class HookedCollection<
           events: Object.fromEntries(
             this.#ee.eventNames()
             .filter(name => AggregateCursorEventsSet.has(name as keyof AggregationCursorHookedEventMap<any>))
-            .map(name => [name, this.#ee.awaitableListeners(name)])
+            .map(name => [name, this.#ee.awaitableListenersWithOptions(name)])
           ),
           interceptExecute: this.#interceptExecute
         }
@@ -233,8 +235,8 @@ export class HookedCollection<
           events: Object.fromEntries(
             this.#ee.eventNames()
             .filter(name => FindCursorEventsSet.has(name as keyof FindCursorHookedEventMap<any>))
-            .map(name => [name, this.#ee.awaitableListeners(name)])
-          ) as Record<string, HookedListenerCallback<EventNames & keyof CollectionHookedEventMap<any>, CollectionHookedEventMap<TSchema>>[]>,
+            .map(name => [name, this.#ee.awaitableListenersWithOptions(name)])
+          ),
           invocationOptions: options
         }
       ) as HookedFindCursorInterface<T>;
@@ -343,9 +345,17 @@ export class HookedCollection<
           caller: "insertOne"
         },
         "doc",
-        ({
+        async ({
           beforeHooksResult,
-        }) => this.#collection.insertOne(beforeHooksResult, options),
+        }) => {
+          if (beforeHooksResult === SkipDocument) {
+            return {
+              acknowledged: false,
+              insertedId: null
+            } as unknown as InsertOneResult<TSchema>;
+          }
+          return this.#collection.insertOne(beforeHooksResult, options)
+        },
         options
       ),
       options
@@ -359,7 +369,8 @@ export class HookedCollection<
       { args: argsOrig },
       "args",
       async ({
-        invocationSymbol: parentInvocationSymbol
+        invocationSymbol: parentInvocationSymbol,
+        beforeHooksResult: [docs, options]
       }) => {
         const beforeHooks = this.#ee.relevantAwaitableListeners(Events.before.insert, options);
         const afterHooks = this.#ee.relevantAwaitableListeners(Events.afterSuccess.insert, options);
@@ -371,14 +382,11 @@ export class HookedCollection<
           return this.#collection.insertMany(docs, options);
         }
         else {
-          const invocationSymbols = new Map<string, symbol>();
-          const docMap = new Map<symbol, OptionalUnlessRequiredId<TSchema>>();
+          const docMap = new Map<OptionalUnlessRequiredId<TSchema>, { invocationSymbol: symbol, doc: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument }>();
           let chainedDocs = docs;
           if (hasBefore) {
-            chainedDocs = await Promise.all(docs.map(async (doc, index) => {
+            chainedDocs = (await Promise.all(docs.map(async (doc, index) => {
               const invocationSymbol = Symbol("insert");
-              docMap.set(invocationSymbol, doc);
-              invocationSymbols.set(`${index}`, invocationSymbol);
               const ret = await this.#ee.callAwaitableChainWithKey(
                 Events.before.insert,
                 {
@@ -393,12 +401,25 @@ export class HookedCollection<
                 "doc",
                 options
               );
+              docMap.set(doc, {
+                invocationSymbol,
+                doc: ret
+              });
               return ret;
-            }));
+            }))).filter(doc => doc !== SkipDocument) as OptionalUnlessRequiredId<TSchema>[];
           }
           let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>>;
           try {
-            ret = this.#collection.insertMany(docs, options);
+            if (chainedDocs.length) {
+              ret = this.#collection.insertMany(chainedDocs, options);
+            }
+            else {
+              ret = {
+                acknowledged: false,
+                insertedCount: 0,
+                insertedIds: {}
+              };
+            }
             if (hasAfterError) {
               ret = await ret;
             }
@@ -407,33 +428,42 @@ export class HookedCollection<
             if (hasAfterError) {
               // TODO: when ordered=true, some inserts may have succeeded.
               // We'd need to determine the ones that did, call the success
-              await Promise.all(docs.map((doc, i) => this.#ee.callAllAwaitableInParallel(
+              await Promise.all(docs.map((docOrig, i) => {
+                const { invocationSymbol, doc } = docMap.get(docOrig) || {};
+                if (!doc || !invocationSymbol) {
+                  throw new Error("Impossible!");
+                }
+                if (doc === SkipDocument) {
+                  return;
+                }
+                this.#ee.callAllAwaitableInParallel(
                 {
                   args: [docs, options],
                   argsOrig,
                   caller: "insertMany",
                   doc,
                   error: e,
-                  invocationSymbol: invocationSymbols.get(`${i}`) as symbol,
+                  invocationSymbol,
                   parentInvocationSymbol,
                   thisArg: this
                 },
                 undefined,
                 Events.afterError.insert
-              )));
+              );
+              }));
             }
             throw e;
           }
           if (hasAfter) {
             const retToUse = await ret;
-            ret = retToUse;
-            await Promise.all(Object.entries(ret.insertedIds).map(([indexString, insertedId]) => {
-              const invocationSymbol = invocationSymbols.get(indexString) || Symbol("insert");
-              const doc = docMap.get(invocationSymbol);
-              if (doc === undefined) {
-                throw new Error("Impossible - we got an afterhook for a doc that wasn't inserted");
+            await Promise.all(docs.map((docOrig, i) => {
+              const { invocationSymbol, doc } = docMap.get(docOrig) || {};
+              if (!doc || !invocationSymbol) {
+                throw new Error("Impossible!");
               }
-              // TODO: afterError
+              if (doc === SkipDocument) {
+                return;
+              }
               return this.#ee.callAwaitableChainWithKey(
                 Events.afterSuccess.insert,
                 {
@@ -443,7 +473,7 @@ export class HookedCollection<
                   argsOrig: [docs, options],
                   result: {
                     acknowledged: retToUse.acknowledged,
-                    insertedId
+                    insertedId: doc._id // is this right? will the resultant insertId ever be different? Are the indexes in order? I kinda doubt it
                   },
                   parentInvocationSymbol,
                   invocationSymbol,
@@ -524,7 +554,7 @@ export class HookedCollection<
       }
     );
     const result = {
-      acknowledged: true,
+      acknowledged: false,
       deletedCount: 0
     };
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy);
@@ -557,6 +587,10 @@ export class HookedCollection<
           beforeHooksResult: chainedFilter,
           invocationSymbol
         });
+        if (chainedFilter === SkipDocument) {
+          return partialResult;
+        }
+        result.acknowledged = true;
         gotResult = true;
         const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
           Events.afterSuccess.delete,
@@ -639,7 +673,7 @@ export class HookedCollection<
     );
     let nextItem = await cursor.next();
     const result = {
-      acknowledged: true,
+      acknowledged: false,
       matchedCount: 0,
       modifiedCount: 0,
       upsertedCount: 0,
@@ -700,21 +734,26 @@ export class HookedCollection<
         try {
           let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
           gotResult = true;
-          const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-            Events.afterSuccess.update,
-            {
-              ...beforeEmitArgs,
-              invocationSymbol,
-              _id,
-              getDocument: () => afterDocumentCache.getDocument(_id),
-              thisArg: this,
-              result: partialResult,
-            },
-            "result",
-            afterListeners,
-          );
-          if (chainedResult !== undefined) {
-            partialResult = chainedResult;
+          if (chainedArgs !== SkipDocument) {
+            const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+              Events.afterSuccess.update,
+              {
+                ...beforeEmitArgs,
+                invocationSymbol,
+                _id,
+                getDocument: () => afterDocumentCache.getDocument(_id),
+                thisArg: this,
+                result: partialResult,
+              },
+              "result",
+              afterListeners,
+            );
+            if (chainedResult !== undefined) {
+              partialResult = chainedResult;
+            }
+          }
+          if (partialResult.acknowledged) {
+            result.acknowledged = true;
           }
           if (partialResult.matchedCount) {
             result.matchedCount++;
@@ -770,12 +809,24 @@ export class HookedCollection<
             },
             parentInvocationSymbol
           },
-          ({ beforeHooksResult: { filter: chainedFilter, replacement: chainedReplacement }, _id }) => this.#collection.replaceOne(
-            // @ts-expect-error
-            { $and: [chainedFilter, { _id }] },
-            chainedReplacement as WithoutId<TSchema>,
-            args[2]
-          ),
+          async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
+            if (chainedFilterMutator === SkipDocument) {
+              return {
+                acknowledged: false,
+                matchedCount: 1,
+                modifiedCount: 0,
+                upsertedCount: 0,
+                upsertedId: null
+              };
+            }
+            const { filter: chainedFilter, replacement: chainedReplacement } = chainedFilterMutator;
+            return this.#collection.replaceOne(
+              // @ts-expect-error
+              { $and: [chainedFilter, { _id }] },
+              chainedReplacement as WithoutId<TSchema>,
+              args[2]
+            );
+          },
           () => this.#collection.replaceOne(...args),
           1,
           options
@@ -811,12 +862,24 @@ export class HookedCollection<
             parentInvocationSymbol: invocationSymbol
           },
           // per document...
-          ({ beforeHooksResult: { filter: chainedFilter, mutator: chainedModifier }, _id }) => this.#collection.updateOne(
-            // @ts-expect-error
-            { $and: [chainedFilter, { _id }]},
-            chainedModifier as UpdateFilter<TSchema>,
-            args[2]
-          ),
+          async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
+            if (chainedFilterMutator === SkipDocument) {
+              return {
+                acknowledged: false,
+                matchedCount: 1,
+                modifiedCount: 0,
+                upsertedCount: 0,
+                upsertedId: null
+              };
+            }
+            const { filter: chainedFilter, mutator: chainedModifier } = chainedFilterMutator;
+            return this.#collection.updateOne(
+              // @ts-expect-error
+              { $and: [chainedFilter, { _id }]},
+              chainedModifier as UpdateFilter<TSchema>,
+              args[2]
+            );
+          },
           // no hooks...
           () => this.#collection.updateOne(...args),
           1,
@@ -850,13 +913,23 @@ export class HookedCollection<
             },
             parentInvocationSymbol
           },
-          ({
-            beforeHooksResult: {
-              filter,
-              mutator
-            },
+          async ({
+            beforeHooksResult: chainedFilterMutator,
             _id
           }) => {
+            if (chainedFilterMutator === SkipDocument) {
+              return {
+                acknowledged: false,
+                matchedCount: 1,
+                modifiedCount: 0,
+                upsertedCount: 0,
+                upsertedId: null
+              };
+            }
+            const {
+              filter,
+              mutator
+            } = chainedFilterMutator;
             // pull out upsert - we'll handle that separately if we detect no document matches.
             // we don't want a removal between the find above and this update to cause an upsert.
             const { upsert: _upsert, ...remainingChainedOptions } = args[2] || {};
@@ -894,14 +967,22 @@ export class HookedCollection<
             parentInvocationSymbol,
             filter
           },
-          ({
+          async ({
             beforeHooksResult: chainedFilter,
             _id,
-          }) => this.#collection.deleteOne(
-            // @ts-expect-error
-            { $and: [chainedFilter, { _id }] },
-            args[1]
-          ),
+          }) => {
+            if (chainedFilter === SkipDocument) {
+              return {
+                acknowledged: false,
+                deletedCount: 0
+              };
+            }
+            return this.#collection.deleteOne(
+              // @ts-expect-error
+              { $and: [chainedFilter, { _id }] },
+              args[1]
+            );
+          },
           () => this.#collection.deleteOne(args[0], args[1]),
           1,
           options
@@ -929,14 +1010,21 @@ export class HookedCollection<
             args: [filter, options],
             parentInvocationSymbol
           },
-          ({
+          async ({
             beforeHooksResult: chainedFilter,
             _id,
-          }) => this.#collection.deleteOne(
-            // @ts-expect-error
-            { $and: [chainedFilter, { _id }] },
-            options
-          ),
+          }) => {
+            if (chainedFilter === SkipDocument) {
+              return {
+                deletedCount: 0
+              };
+            }
+            return this.#collection.deleteOne(
+              // @ts-expect-error
+              { $and: [chainedFilter, { _id }] },
+              options
+            );
+          },
           () => this.#collection.deleteMany(filter, options),
           undefined,
           options
