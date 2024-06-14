@@ -27,7 +27,7 @@ export type BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema> = {
   }>,
 }
 
-type BeforeAfterErrorAggregateCursorEventDefinitions<TSchema> = BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema>
+export type BeforeAfterErrorAggregateCursorEventDefinitions<TSchema> = BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema>
   & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
 
 type AggregationCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "before", "before">

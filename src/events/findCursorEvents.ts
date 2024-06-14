@@ -32,7 +32,7 @@ export type BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema> = {
   }>,
 }
 
-type BeforeAfterErrorFindCursorEventDefinitions<TSchema> = BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema>
+export type BeforeAfterErrorFindCursorEventDefinitions<TSchema> = BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema>
   & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
 
 type FindCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "before", "before">
@@ -40,7 +40,7 @@ type FindCursorAfterEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAf
 type FindCursorErrorEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "error", "error">
 
 
-type BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema> = FindCursorBeforeEventDefinitions<TSchema>
+export type BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema> = FindCursorBeforeEventDefinitions<TSchema>
   & FindCursorAfterEventDefinitions<TSchema>
   & FindCursorErrorEventDefinitions<TSchema>;
 

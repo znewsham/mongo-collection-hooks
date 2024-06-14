@@ -190,7 +190,7 @@ export class ChainedAwaiatableEventEmitter<
     return Promise.all(allListeners.map(listener => listener(emitArgs)));
   }
 
-  async callAllAwaitableChainWithKey<MK extends keyof EM, K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]>(
+  async callAllAwaitableChainWithKey<MK extends keyof EM, K extends keyof EM, CK extends string & keyof EM[MK]["emitArgs"] & EM[MK]["returnEmitName"]>(
     emitArgs: EM[MK]["emitArgs"],
     chainKey: CK,
     options: StandardInvokeHookOptions<EM, MK | K> | undefined,

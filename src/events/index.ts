@@ -1,7 +1,7 @@
 import type {
   Document
 } from "mongodb"
-import { ChainedAwaiatableEventEmitter, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
+import { ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
 import { NestedProjectionOfTSchema } from "./helpersTypes.js";
 import { AllCollectionEventDefinitions, BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions } from "./collectionEvents.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
@@ -35,8 +35,10 @@ type _BeforeAfterEventNames = keyof BeforeAfterErrorCollectionEventDefinitions<D
   | keyof BeforeAfterErrorGenericCursorEventDefinitions<Document>;
 type BeforeAfterEventNames<limit extends _BeforeAfterEventNames = _BeforeAfterEventNames> = _BeforeAfterEventNames & limit;
 
-export type CallerType<k extends BeforeAfterEventNames = BeforeAfterEventNames> = CollectionBeforeAfterErrorEventDefinitions<Document>[k]["caller"]
+type MapWithCaller={[k in string]: { caller: string | undefined }}
 
+export type GenericCallerType<map extends MapWithCaller, k extends keyof map = keyof map> = map[k]["caller"]
+export type CallerType<k extends BeforeAfterEventNames = BeforeAfterEventNames> = CollectionBeforeAfterErrorEventDefinitions<Document>[k]["caller"]
 
 
 
@@ -55,8 +57,13 @@ export type PartialCallbackMap<K extends keyof EM, EM extends ChainedCallbackEve
 export type HookedListenerCallback<K extends keyof HEM, HEM extends ChainedCallbackEventMap> = ChainedListenerCallback<K, HEM>
 
 
-export class HookedEventEmitter<HEM extends ChainedCallbackEventMap> extends ChainedAwaiatableEventEmitter<HEM> {
+type ChainedCallbackEntryWithCaller = ChainedCallbackEntry & { caller: string | undefined };
+export type ChainedCallbackEventMapWithCaller = Record<string, ChainedCallbackEntryWithCaller>
 
+export class HookedEventEmitter<HEM extends ChainedCallbackEventMapWithCaller> extends ChainedAwaiatableEventEmitter<HEM> {
+  assertCaller<IE extends keyof HEM>(caller: GenericCallerType<HEM>, eventName: IE): asserts caller is GenericCallerType<HEM, typeof eventName> {
+
+  }
 }
 
 
@@ -112,6 +119,7 @@ const beforeAfterEvents = [
   "findOne",
   "aggregate",
   "distinct",
+  "*",
   ...FindCursorEventsSuffixes,
   ...AggregateCursorEventsSuffixes,
   ...GenericCursorEventsSuffixes
@@ -129,9 +137,9 @@ export const Events: {
 }
 
 export const InternalEvents = Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, key])) as { [k in BeforeAfterEventNames]: k};
-
-export function internalSymbolToBeforeAfterKey<
-  K extends BeforeAfterEventNames
+export function internalEventToBeforeAfterKey<
+  // BAEM extends Record<string, any>,
+  K extends string
 >(key: K): { before: `before.${K}`, afterSuccess: `after.${K}.success`, afterError: `after.${K}.error` } {
   return {
     before: `before.${key}` as (`before.${K}`),
@@ -146,6 +154,17 @@ export function assertCaller<
   IE extends BeforeAfterEventNames
 >(caller: CallerType, internalEvent: IE): asserts caller is CallerType<typeof internalEvent> {
 
+}
+
+export function getAssertCaller<
+  BEAD extends MapWithCaller
+>() {
+  return function assertCaller<IE extends keyof BEAD>(
+    caller: GenericCallerType<BEAD>,
+    internalEvent: IE
+  ): asserts caller is GenericCallerType<BEAD, typeof internalEvent> {
+
+  };
 }
 
 export function assertArgs<

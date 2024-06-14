@@ -46,7 +46,7 @@ import {
 } from "./events/index.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
-import { tryCatchEmit } from "./tryCatchEmit.js";
+import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from './utils.js';
 import { ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
 import { CollectionOnlyBeforeAfterErrorEventDefinitions } from './events/collectionEvents.js';
@@ -96,7 +96,7 @@ export class HookedCollection<
   #collection: Collection<TSchema>;
   static Events = Events;
   // #transform?: (doc: TSchema) => any;
-  #ee = new HookedEventEmitter<CollectionHookedEventMap<TSchema>>();
+  #ee: HookedEventEmitter<CollectionHookedEventMap<TSchema>> = new HookedEventEmitter<CollectionHookedEventMap<TSchema>>();
   #interceptExecute: boolean = false;
 
   constructor(collection: Collection<TSchema>) {
@@ -278,10 +278,17 @@ export class HookedCollection<
   }
 
   async #tryCatchEmit<
-    BEAD extends CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>,
-    T extends (callArgs: BEAD[IE]["before"]["emitArgs"]["args"] extends never ? { invocationSymbol: symbol } : { invocationSymbol: symbol, beforeHooksResult: BEAD[IE]["before"]["returns"] }) => Promise<any>,
+    HEM extends CollectionHookedEventMap<TSchema>,
+    // TODO: clean this up - ties into tryCatchEmit.ts
+    T extends (callArgs: HEM[BE]["emitArgs"]["args"] extends never
+      ? { invocationSymbol: symbol }
+      : HEM[BE] extends { returns: any }
+        ? { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }
+        : { invocationSymbol: symbol }
+      ) => Promise<any>,
+    BE extends `before.${IE}` & keyof HEM,
     IE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>,
-    EA extends BEAD[IE]["before"]["emitArgs"],
+    EA extends HEM[BE]["emitArgs"],
     OEA extends Omit<EA, "invocationSymbol" | "thisArg">
   >(
     internalEvent: IE,
@@ -296,9 +303,9 @@ export class HookedCollection<
       ...remainingEmitArgs
     } = emitArgs as OEA & {
       args: EA["args"] extends never ? undefined : EA["args"],
-      caller: BEAD[IE]["caller"] extends never ? undefined : BEAD[IE]["caller"]
+      caller: HEM[BE]["caller"] extends never ? undefined : HEM[BE]["caller"]
     };
-
+    const tryCatchEmit = getTryCatch<CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>>();
     return tryCatchEmit(
       this.#ee,
       fn,
@@ -313,8 +320,6 @@ export class HookedCollection<
       true,
       beforeChainKey,
       invocationOptions,
-      undefined,
-      undefined,
       internalEvent
     )
   }

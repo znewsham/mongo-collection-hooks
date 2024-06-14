@@ -106,8 +106,9 @@ export type BeforeAfterCallbackArgsAndReturn<
     emitArgs: BIM[k]["emitArgs"],
     returns: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never,
     isPromise: BIM[k]["isPromise"],
-    returnEmitName: BIM[k] extends { returnEmitName: never } ? undefined : BIM[k]["returnEmitName"],
-    options: BIM[k] extends { options: StandardDefineHookOptions } ? BIM[k]["options"] : StandardDefineHookOptions
+    returnEmitName: BIM[k] extends { returnEmitName: never } ? never : BIM[k]["returnEmitName"],
+    options: BIM[k] extends { options: StandardDefineHookOptions } ? BIM[k]["options"] : StandardDefineHookOptions,
+    caller: BIM[k] extends { caller: any } ? BIM[k]["caller"] : undefined
   }
 }
 

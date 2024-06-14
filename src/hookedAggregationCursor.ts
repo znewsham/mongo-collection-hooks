@@ -2,7 +2,8 @@ import type { AggregationCursor } from "mongodb";
 import { AggregationCursorHookedEventMap, CallerType, Events, HookedAggregationCursorInterface, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller } from "./events/index.js";
 import { AbstractHookedAggregationCursor } from "./abstractAggregationCursorImpl.js";
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
-import { tryCatchEmit } from "./tryCatchEmit.js";
+import { getTryCatch } from "./tryCatchEmit.js";
+import { BeforeAfterErrorAggregateCursorEventDefinitions } from "./events/aggregationCursorEvents.js";
 
 
 interface HookedAggregateCursorOptions<TSchema> {
@@ -23,6 +24,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
   #cursor: AggregationCursor<TSchema>;
   #invocationOptions?: StandardInvokeHookOptions<AggregationCursorHookedEventMap<TSchema>>;
   #interceptExecute: boolean = false;
+  #tryCatchEmit = getTryCatch<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>>();
   constructor(cursor: AggregationCursor<TSchema>, {
     events,
     invocationSymbol,
@@ -174,7 +176,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
 
   async toArray(): Promise<TSchema[]> {
     assertCaller(this.#caller, "aggregation.cursor.toArray");
-    return tryCatchEmit(
+    return this.#tryCatchEmit(
       this.#ee,
       ({
         invocationSymbol
@@ -194,8 +196,6 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       true,
       undefined,
       this.#invocationOptions,
-      undefined,
-      undefined,
       InternalEvents["aggregation.cursor.toArray"],
       InternalEvents["cursor.toArray"],
     );
@@ -203,7 +203,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
 
   async forEach(iterator: (doc: TSchema) => boolean | void): Promise<void> {
     assertCaller(this.#caller, "aggregation.cursor.forEach");
-    return tryCatchEmit(
+    return this.#tryCatchEmit(
       this.#ee,
       ({ invocationSymbol, beforeHooksResult: [chainedIterator] }) => this.#wrapCaller("aggregation.cursor.forEach", async () => {
         if (this.#cursor.id === undefined) {
@@ -221,8 +221,6 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       false,
       "args",
       this.#invocationOptions,
-      undefined,
-      undefined,
       "aggregation.cursor.forEach",
       "cursor.forEach"
     );

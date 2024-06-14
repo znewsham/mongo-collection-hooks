@@ -1,8 +1,9 @@
 import type { FindCursor, Document, CountOptions } from "mongodb";
 import { CallerType, Events, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller, HookedFindCursorInterface, FindCursorHookedEventMap } from "./events/index.js";
 import { AbstractHookedFindCursor } from "./abstractFindCursorImpl.js";
-import { tryCatchEmit } from "./tryCatchEmit.js";
+import { getTryCatch } from "./tryCatchEmit.js";
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
+import { BeforeAfterErrorFindCursorEventDefinitions, BeforeAfterErrorFindCursorFlatEventDefinitions, BeforeAfterErrorFindOnlyCursorEventDefinitions } from "./events/findCursorEvents.js";
 
 interface HookedFindCursorOptions<TSchema> {
   transform?: (doc: TSchema) => any,
@@ -23,6 +24,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
   #cursor: FindCursor<TSchema>;
   #filter: Document;
   #interceptExecute: boolean;
+  #tryCatchEmit = getTryCatch<BeforeAfterErrorFindCursorEventDefinitions<TSchema>>();
   #invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>;
 
   constructor(filter: Document | undefined, findCursor: FindCursor<TSchema>, {
@@ -138,8 +140,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
 
   async next(): Promise<TSchema | null> {
     assertCaller(this.#caller, "find.cursor.next");
-    this.#ee.awaitableListeners("before.find.cursor.next")
-    return tryCatchEmit(
+    return this.#tryCatchEmit(
       this.#ee,
       async ({ invocationSymbol }) => this.#wrapCaller("find.cursor.next", async () => {
         if (this.#cursor.id === undefined) {
@@ -162,8 +163,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       true,
       undefined,
       this.#invocationOptions,
-      undefined,
-      undefined,
       InternalEvents["find.cursor.next"],
       InternalEvents["cursor.next"]
     )
@@ -171,7 +170,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
 
   async toArray(): Promise<TSchema[]> {
     assertCaller(this.#caller, "find.cursor.toArray");
-    return tryCatchEmit(
+    return this.#tryCatchEmit(
       this.#ee,
       ({ invocationSymbol }) => this.#wrapCaller("find.cursor.toArray", async () => {
         if (this.#cursor.id === undefined) {
@@ -189,8 +188,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       true,
       undefined,
       this.#invocationOptions,
-      undefined,
-      undefined,
       InternalEvents["find.cursor.toArray"],
       InternalEvents["cursor.toArray"],
     );
@@ -198,7 +195,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
 
   async count(options?: CountOptions): Promise<number> {
     assertCaller(this.#caller, "find.cursor.count");
-    return tryCatchEmit(
+    return this.#tryCatchEmit(
       this.#ee,
       ({ beforeHooksResult: optionsToUse }) => this.#cursor.count(...optionsToUse),
       this.#caller,
@@ -211,15 +208,13 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       true,
       "args",
       this.#invocationOptions,
-      undefined,
-      undefined,
       "find.cursor.count"
     );
   }
 
   async forEach(iterator: (doc: TSchema) => boolean | void): Promise<void> {
     assertCaller(this.#caller, "find.cursor.forEach");
-    return tryCatchEmit(
+    return this.#tryCatchEmit(
       this.#ee,
       ({ beforeHooksResult: [chainedIterator], invocationSymbol }) => this.#wrapCaller("find.cursor.forEach", async () => {
         if (this.#cursor.id === undefined) {
@@ -237,8 +232,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       false,
       "args",
       this.#invocationOptions,
-      undefined,
-      undefined,
       "find.cursor.forEach",
       "cursor.forEach"
     );
