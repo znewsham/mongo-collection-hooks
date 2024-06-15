@@ -52,6 +52,7 @@ import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from './utils.js';
 import { ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
 import { CollectionOnlyBeforeAfterErrorEventDefinitions } from './events/collectionEvents.js';
+import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 
 function assertReplacementHasId<TSchema>(replacement: WithoutId<TSchema>): asserts replacement is OptionalUnlessRequiredId<TSchema> {
   if (!(replacement as OptionalUnlessRequiredId<TSchema>)._id) {
@@ -186,18 +187,27 @@ export class HookedCollection<
 
   findOne<T = TSchema>(filter?: Filter<TSchema>, options?: AmendedFindOptions<TSchema> | undefined): Promise<T | null> {
     return this.#tryCatchEmit(
-      InternalEvents.findOne,
-      { args: [filter, options] },
-      "args",
-      ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
-        if (chainedFilter && options) {
-          return this.#collection.findOne(chainedFilter, chainedOptions) as Promise<T | null>;
-        }
-        if (chainedFilter) {
-          return this.#collection.findOne(chainedFilter) as Promise<T | null>;
-        }
-        return this.#collection.findOne() as Promise<T | null>;
+      InternalEvents["*"],
+      {
+        args: [filter, options],
+        operation: "findOne"
       },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.findOne,
+        { args: [filter, options] },
+        "args",
+        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
+          if (chainedFilter && options) {
+            return this.#collection.findOne(chainedFilter, chainedOptions) as Promise<T | null>;
+          }
+          if (chainedFilter) {
+            return this.#collection.findOne(chainedFilter) as Promise<T | null>;
+          }
+          return this.#collection.findOne() as Promise<T | null>;
+        },
+        options
+      ),
       options
     );
   }
@@ -289,13 +299,13 @@ export class HookedCollection<
         : { invocationSymbol: symbol }
       ) => Promise<any>,
     BE extends `before.${IE}` & keyof HEM,
-    IE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>,
+    IE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema>,
     EA extends HEM[BE]["emitArgs"],
     OEA extends Omit<EA, "invocationSymbol" | "thisArg">
   >(
     internalEvent: IE,
     emitArgs: OEA,
-    beforeChainKey: keyof OEA,
+    beforeChainKey: keyof OEA | undefined,
     fn: T,
     invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined
   ): Promise<Awaited<ReturnType<T>>> {
@@ -307,7 +317,7 @@ export class HookedCollection<
       args: EA["args"] extends never ? undefined : EA["args"],
       caller: HEM[BE]["caller"] extends never ? undefined : HEM[BE]["caller"]
     };
-    const tryCatchEmit = getTryCatch<CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>>();
+    const tryCatchEmit = getTryCatch<CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> & BeforeAfterErrorSharedEventDefinitions<TSchema>>();
     return tryCatchEmit(
       this.#ee,
       fn,
@@ -329,33 +339,42 @@ export class HookedCollection<
   insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions<CollectionHookedEventMap<TSchema>>) {
     const argsOrig = [doc, options] as const;
     return this.#tryCatchEmit(
-      InternalEvents.insertOne,
-      { args: [doc, options] },
-      "args",
-      ({
-        invocationSymbol,
-        beforeHooksResult: [chainedDoc, chainedOptions]
-      }) => this.#tryCatchEmit(
-        InternalEvents.insert,
-        {
-          args: [chainedDoc, chainedOptions],
-          argsOrig,
-          parentInvocationSymbol: invocationSymbol,
-          doc: chainedDoc,
-          caller: "insertOne"
-        },
-        "doc",
-        async ({
-          beforeHooksResult,
-        }) => {
-          if (beforeHooksResult === SkipDocument) {
-            return {
-              acknowledged: false,
-              insertedId: null
-            } as unknown as InsertOneResult<TSchema>;
-          }
-          return this.#collection.insertOne(beforeHooksResult, options)
-        },
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "insertOne"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.insertOne,
+        { args: [doc, options] },
+        "args",
+        ({
+          invocationSymbol,
+          beforeHooksResult: [chainedDoc, chainedOptions]
+        }) => this.#tryCatchEmit(
+          InternalEvents.insert,
+          {
+            args: [chainedDoc, chainedOptions],
+            argsOrig,
+            parentInvocationSymbol: invocationSymbol,
+            doc: chainedDoc,
+            caller: "insertOne"
+          },
+          "doc",
+          async ({
+            beforeHooksResult,
+          }) => {
+            if (beforeHooksResult === SkipDocument) {
+              return {
+                acknowledged: false,
+                insertedId: null
+              } as unknown as InsertOneResult<TSchema>;
+            }
+            return this.#collection.insertOne(beforeHooksResult, options)
+          },
+          options
+        ),
         options
       ),
       options
@@ -365,70 +384,106 @@ export class HookedCollection<
   insertMany(docs: OptionalUnlessRequiredId<TSchema>[], options?: AmendedBulkWriteOptions) {
     const argsOrig = [docs, options] as const;
     return this.#tryCatchEmit(
-      InternalEvents.insertMany,
-      { args: argsOrig },
-      "args",
-      async ({
-        invocationSymbol: parentInvocationSymbol,
-        beforeHooksResult: [docs, options]
-      }) => {
-        const beforeHooks = this.#ee.relevantAwaitableListeners(Events.before.insert, options);
-        const afterSuccessHooks = this.#ee.relevantAwaitableListeners(Events.afterSuccess.insert, options);
-        const afterErrorHooks = this.#ee.relevantAwaitableListeners(Events.afterError.insert, options);
-        const afterHooks = this.#ee.relevantAwaitableListeners(Events.after.insert, options);
-        const hasBefore = !!beforeHooks.length;
-        const hasAfter = !!afterSuccessHooks.length || !!afterHooks.length;
-        const hasAfterError = !!afterErrorHooks.length || !afterHooks.length;
-        if (!hasBefore && !hasAfter) {
-          return this.#collection.insertMany(docs, options);
-        }
-        else {
-          const docMap = new Map<OptionalUnlessRequiredId<TSchema>, { invocationSymbol: symbol, doc: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument }>();
-          let chainedDocs = docs;
-          if (hasBefore) {
-            chainedDocs = (await Promise.all(docs.map(async (doc, index) => {
-              const invocationSymbol = Symbol("insert");
-              const ret = await this.#ee.callAwaitableChainWithKey(
-                Events.before.insert,
-                {
-                  caller: "insertMany",
-                  doc,
-                  parentInvocationSymbol,
-                  args: [docs, options],
-                  argsOrig,
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "insertMany"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.insertMany,
+        { args: argsOrig },
+        "args",
+        async ({
+          invocationSymbol: parentInvocationSymbol,
+          beforeHooksResult: [docs, options]
+        }) => {
+          const beforeHooks = this.#ee.relevantAwaitableListeners(Events.before.insert, options);
+          const afterSuccessHooks = this.#ee.relevantAwaitableListeners(Events.afterSuccess.insert, options);
+          const afterErrorHooks = this.#ee.relevantAwaitableListeners(Events.afterError.insert, options);
+          const afterHooks = this.#ee.relevantAwaitableListeners(Events.after.insert, options);
+          const hasBefore = !!beforeHooks.length;
+          const hasAfter = !!afterSuccessHooks.length || !!afterHooks.length;
+          const hasAfterError = !!afterErrorHooks.length || !afterHooks.length;
+          if (!hasBefore && !hasAfter) {
+            return this.#collection.insertMany(docs, options);
+          }
+          else {
+            const docMap = new Map<OptionalUnlessRequiredId<TSchema>, { invocationSymbol: symbol, doc: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument }>();
+            let chainedDocs = docs;
+            if (hasBefore) {
+              chainedDocs = (await Promise.all(docs.map(async (doc, index) => {
+                const invocationSymbol = Symbol("insert");
+                const ret = await this.#ee.callAwaitableChainWithKey(
+                  Events.before.insert,
+                  {
+                    caller: "insertMany",
+                    doc,
+                    parentInvocationSymbol,
+                    args: [docs, options],
+                    argsOrig,
+                    invocationSymbol,
+                    thisArg: this
+                  },
+                  "doc",
+                  options
+                );
+                docMap.set(doc, {
                   invocationSymbol,
-                  thisArg: this
-                },
-                "doc",
-                options
-              );
-              docMap.set(doc, {
-                invocationSymbol,
-                doc: ret
-              });
-              return ret;
-            }))).filter(doc => doc !== SkipDocument) as OptionalUnlessRequiredId<TSchema>[];
-          }
-          let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>>;
-          try {
-            if (chainedDocs.length) {
-              ret = this.#collection.insertMany(chainedDocs, options);
+                  doc: ret
+                });
+                return ret;
+              }))).filter(doc => doc !== SkipDocument) as OptionalUnlessRequiredId<TSchema>[];
             }
-            else {
-              ret = {
-                acknowledged: false,
-                insertedCount: 0,
-                insertedIds: {}
-              };
+            let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>>;
+            try {
+              if (chainedDocs.length) {
+                ret = this.#collection.insertMany(chainedDocs, options);
+              }
+              else {
+                ret = {
+                  acknowledged: false,
+                  insertedCount: 0,
+                  insertedIds: {}
+                };
+              }
+              if (hasAfterError) {
+                ret = await ret;
+              }
             }
-            if (hasAfterError) {
-              ret = await ret;
+            catch (e) {
+              if (hasAfterError) {
+                // TODO: when ordered=true, some inserts may have succeeded.
+                // We'd need to determine the ones that did, call the success
+                await Promise.all(docs.map((docOrig, i) => {
+                  const { invocationSymbol, doc } = docMap.get(docOrig) || {};
+                  if (!doc || !invocationSymbol) {
+                    throw new Error("Impossible!");
+                  }
+                  if (doc === SkipDocument) {
+                    return;
+                  }
+                  this.#ee.callAllAwaitableInParallel(
+                  {
+                    args: [docs, options],
+                    argsOrig,
+                    caller: "insertMany",
+                    doc,
+                    error: e,
+                    invocationSymbol,
+                    parentInvocationSymbol,
+                    thisArg: this
+                  },
+                  undefined,
+                  Events.afterError.insert,
+                  Events.after.insert
+                );
+                }));
+              }
+              throw e;
             }
-          }
-          catch (e) {
-            if (hasAfterError) {
-              // TODO: when ordered=true, some inserts may have succeeded.
-              // We'd need to determine the ones that did, call the success
+            if (hasAfter) {
+              const retToUse = await ret;
               await Promise.all(docs.map((docOrig, i) => {
                 const { invocationSymbol, doc } = docMap.get(docOrig) || {};
                 if (!doc || !invocationSymbol) {
@@ -437,59 +492,32 @@ export class HookedCollection<
                 if (doc === SkipDocument) {
                   return;
                 }
-                this.#ee.callAllAwaitableInParallel(
-                {
-                  args: [docs, options],
-                  argsOrig,
-                  caller: "insertMany",
-                  doc,
-                  error: e,
-                  invocationSymbol,
-                  parentInvocationSymbol,
-                  thisArg: this
-                },
-                undefined,
-                Events.afterError.insert,
-                Events.after.insert
-              );
+                return this.#ee.callAllAwaitableChainWithKey(
+                  {
+                    caller: "insertMany",
+                    args: [docs, options],
+                    doc,
+                    argsOrig: [docs, options],
+                    result: {
+                      acknowledged: retToUse.acknowledged,
+                      insertedId: doc._id // is this right? will the resultant insertId ever be different? Are the indexes in order? I kinda doubt it
+                    },
+                    parentInvocationSymbol,
+                    invocationSymbol,
+                    thisArg: this
+                  },
+                  "result",
+                  options,
+                  Events.afterSuccess.insert,
+                  Events.after.insert
+                );
               }));
             }
-            throw e;
+            return ret;
           }
-          if (hasAfter) {
-            const retToUse = await ret;
-            await Promise.all(docs.map((docOrig, i) => {
-              const { invocationSymbol, doc } = docMap.get(docOrig) || {};
-              if (!doc || !invocationSymbol) {
-                throw new Error("Impossible!");
-              }
-              if (doc === SkipDocument) {
-                return;
-              }
-              return this.#ee.callAllAwaitableChainWithKey(
-                {
-                  caller: "insertMany",
-                  args: [docs, options],
-                  doc,
-                  argsOrig: [docs, options],
-                  result: {
-                    acknowledged: retToUse.acknowledged,
-                    insertedId: doc._id // is this right? will the resultant insertId ever be different? Are the indexes in order? I kinda doubt it
-                  },
-                  parentInvocationSymbol,
-                  invocationSymbol,
-                  thisArg: this
-                },
-                "result",
-                options,
-                Events.afterSuccess.insert,
-                Events.after.insert
-              );
-            }));
-          }
-          return ret;
-        }
-      },
+        },
+        options
+      ),
       options
     );
   }
@@ -804,47 +832,56 @@ export class HookedCollection<
   replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: AmendedReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>> {
     const argsOrig = [filter, replacement, options] as const;
     return this.#tryCatchEmit(
-      InternalEvents.replaceOne,
-      { args: argsOrig },
-      "args",
-      async ({
-        beforeHooksResult: args,
-        invocationSymbol: parentInvocationSymbol
-      }) => {
-        return this.#tryCatchUpdate(
-          {
-            caller: "replaceOne",
-            argsOrig,
-            args,
-            filterMutator: {
-              filter: args[0],
-              replacement: args[1]
-            },
-            parentInvocationSymbol
-          },
-          async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
-            if (chainedFilterMutator === SkipDocument) {
-              return {
-                acknowledged: false,
-                matchedCount: 1,
-                modifiedCount: 0,
-                upsertedCount: 0,
-                upsertedId: null
-              };
-            }
-            const { filter: chainedFilter, replacement: chainedReplacement } = chainedFilterMutator;
-            return this.#collection.replaceOne(
-              // @ts-expect-error
-              { $and: [chainedFilter, { _id }] },
-              chainedReplacement as WithoutId<TSchema>,
-              args[2]
-            );
-          },
-          () => this.#collection.replaceOne(...args),
-          1,
-          options
-        );
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "replaceOne"
       },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.replaceOne,
+        { args: argsOrig },
+        "args",
+        async ({
+          beforeHooksResult: args,
+          invocationSymbol: parentInvocationSymbol
+        }) => {
+          return this.#tryCatchUpdate(
+            {
+              caller: "replaceOne",
+              argsOrig,
+              args,
+              filterMutator: {
+                filter: args[0],
+                replacement: args[1]
+              },
+              parentInvocationSymbol
+            },
+            async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
+              if (chainedFilterMutator === SkipDocument) {
+                return {
+                  acknowledged: false,
+                  matchedCount: 1,
+                  modifiedCount: 0,
+                  upsertedCount: 0,
+                  upsertedId: null
+                };
+              }
+              const { filter: chainedFilter, replacement: chainedReplacement } = chainedFilterMutator;
+              return this.#collection.replaceOne(
+                // @ts-expect-error
+                { $and: [chainedFilter, { _id }] },
+                chainedReplacement as WithoutId<TSchema>,
+                args[2]
+              );
+            },
+            () => this.#collection.replaceOne(...args),
+            1,
+            options
+          );
+        },
+        options
+      ),
       options
     );
   }
@@ -856,49 +893,58 @@ export class HookedCollection<
   ) {
     const argsOrig = [filter, update, options] as const;
     return this.#tryCatchEmit(
-      InternalEvents.updateOne,
-      { args: argsOrig },
-      "args",
-      async ({
-        beforeHooksResult: args,
-        invocationSymbol
-      }) => {
-        return this.#tryCatchUpdate(
-          {
-            args,
-            argsOrig,
-            caller: "updateOne",
-            filterMutator: {
-              filter: args[0],
-              mutator: args[1]
-            },
-            parentInvocationSymbol: invocationSymbol
-          },
-          // per document...
-          async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
-            if (chainedFilterMutator === SkipDocument) {
-              return {
-                acknowledged: false,
-                matchedCount: 1,
-                modifiedCount: 0,
-                upsertedCount: 0,
-                upsertedId: null
-              };
-            }
-            const { filter: chainedFilter, mutator: chainedModifier } = chainedFilterMutator;
-            return this.#collection.updateOne(
-              // @ts-expect-error
-              { $and: [chainedFilter, { _id }]},
-              chainedModifier as UpdateFilter<TSchema>,
-              args[2]
-            );
-          },
-          // no hooks...
-          () => this.#collection.updateOne(...args),
-          1,
-          options
-        )
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "updateOne"
       },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.updateOne,
+        { args: argsOrig },
+        "args",
+        async ({
+          beforeHooksResult: args,
+          invocationSymbol
+        }) => {
+          return this.#tryCatchUpdate(
+            {
+              args,
+              argsOrig,
+              caller: "updateOne",
+              filterMutator: {
+                filter: args[0],
+                mutator: args[1]
+              },
+              parentInvocationSymbol: invocationSymbol
+            },
+            // per document...
+            async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
+              if (chainedFilterMutator === SkipDocument) {
+                return {
+                  acknowledged: false,
+                  matchedCount: 1,
+                  modifiedCount: 0,
+                  upsertedCount: 0,
+                  upsertedId: null
+                };
+              }
+              const { filter: chainedFilter, mutator: chainedModifier } = chainedFilterMutator;
+              return this.#collection.updateOne(
+                // @ts-expect-error
+                { $and: [chainedFilter, { _id }]},
+                chainedModifier as UpdateFilter<TSchema>,
+                args[2]
+              );
+            },
+            // no hooks...
+            () => this.#collection.updateOne(...args),
+            1,
+            options
+          )
+        },
+        options
+      ),
       options
     );
   }
@@ -906,58 +952,67 @@ export class HookedCollection<
   updateMany(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: AmendedUpdateOptions | undefined): Promise<UpdateResult<TSchema>> {
     const argsOrig = [filter, update, options] as const;
     return this.#tryCatchEmit(
-      InternalEvents.updateMany,
+      InternalEvents["*"],
       {
-        args: argsOrig
+        args: argsOrig,
+        operation: "updateMany"
       },
-      'args',
-      async ({
-        invocationSymbol: parentInvocationSymbol,
-        beforeHooksResult: args
-      }) => {
-        return this.#tryCatchUpdate(
-          {
-            args,
-            argsOrig,
-            caller: "updateMany",
-            filterMutator: {
-              filter: args[0],
-              mutator: args[1]
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.updateMany,
+        {
+          args: argsOrig
+        },
+        'args',
+        async ({
+          invocationSymbol: parentInvocationSymbol,
+          beforeHooksResult: args
+        }) => {
+          return this.#tryCatchUpdate(
+            {
+              args,
+              argsOrig,
+              caller: "updateMany",
+              filterMutator: {
+                filter: args[0],
+                mutator: args[1]
+              },
+              parentInvocationSymbol
             },
-            parentInvocationSymbol
-          },
-          async ({
-            beforeHooksResult: chainedFilterMutator,
-            _id
-          }) => {
-            if (chainedFilterMutator === SkipDocument) {
-              return {
-                acknowledged: false,
-                matchedCount: 1,
-                modifiedCount: 0,
-                upsertedCount: 0,
-                upsertedId: null
-              };
-            }
-            const {
-              filter,
-              mutator
-            } = chainedFilterMutator;
-            // pull out upsert - we'll handle that separately if we detect no document matches.
-            // we don't want a removal between the find above and this update to cause an upsert.
-            const { upsert: _upsert, ...remainingChainedOptions } = args[2] || {};
-            return this.#collection.updateOne(
-              // @ts-expect-error _id could be anything :shrug:
-              { $and: [{ _id }, filter] },
-              mutator,
-              remainingChainedOptions
-            );
-          },
-          () => this.#collection.updateMany(...args),
-          undefined,
-          options
-        );
-      },
+            async ({
+              beforeHooksResult: chainedFilterMutator,
+              _id
+            }) => {
+              if (chainedFilterMutator === SkipDocument) {
+                return {
+                  acknowledged: false,
+                  matchedCount: 1,
+                  modifiedCount: 0,
+                  upsertedCount: 0,
+                  upsertedId: null
+                };
+              }
+              const {
+                filter,
+                mutator
+              } = chainedFilterMutator;
+              // pull out upsert - we'll handle that separately if we detect no document matches.
+              // we don't want a removal between the find above and this update to cause an upsert.
+              const { upsert: _upsert, ...remainingChainedOptions } = args[2] || {};
+              return this.#collection.updateOne(
+                // @ts-expect-error _id could be anything :shrug:
+                { $and: [{ _id }, filter] },
+                mutator,
+                remainingChainedOptions
+              );
+            },
+            () => this.#collection.updateMany(...args),
+            undefined,
+            options
+          );
+        },
+        options
+      ),
       options
     );
   }
@@ -965,42 +1020,51 @@ export class HookedCollection<
   deleteOne(filter: Filter<TSchema>, options?: AmendedDeleteOptions) {
     const argsOrig = [filter, options] as const;
     return this.#tryCatchEmit(
-      InternalEvents.deleteOne,
-      { args: argsOrig },
-      "args",
-      async ({
-        beforeHooksResult: args,
-        invocationSymbol: parentInvocationSymbol
-      }) => {
-        return this.#tryCatchDelete(
-          {
-            caller: "deleteOne",
-            argsOrig,
-            args,
-            parentInvocationSymbol,
-            filter
-          },
-          async ({
-            beforeHooksResult: chainedFilter,
-            _id,
-          }) => {
-            if (chainedFilter === SkipDocument) {
-              return {
-                acknowledged: false,
-                deletedCount: 0
-              };
-            }
-            return this.#collection.deleteOne(
-              // @ts-expect-error
-              { $and: [chainedFilter, { _id }] },
-              args[1]
-            );
-          },
-          () => this.#collection.deleteOne(args[0], args[1]),
-          1,
-          options
-        );
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "deleteOne"
       },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.deleteOne,
+        { args: argsOrig },
+        "args",
+        async ({
+          beforeHooksResult: args,
+          invocationSymbol: parentInvocationSymbol
+        }) => {
+          return this.#tryCatchDelete(
+            {
+              caller: "deleteOne",
+              argsOrig,
+              args,
+              parentInvocationSymbol,
+              filter
+            },
+            async ({
+              beforeHooksResult: chainedFilter,
+              _id,
+            }) => {
+              if (chainedFilter === SkipDocument) {
+                return {
+                  acknowledged: false,
+                  deletedCount: 0
+                };
+              }
+              return this.#collection.deleteOne(
+                // @ts-expect-error
+                { $and: [chainedFilter, { _id }] },
+                args[1]
+              );
+            },
+            () => this.#collection.deleteOne(args[0], args[1]),
+            1,
+            options
+          );
+        },
+        options
+      ),
       options
     );
   }
@@ -1008,42 +1072,52 @@ export class HookedCollection<
   deleteMany(origFilter: Filter<TSchema>, origOptions?: AmendedDeleteOptions) {
     const argsOrig = [origFilter, origOptions] as const;
     return this.#tryCatchEmit(
-      InternalEvents.deleteMany,
-      { args: argsOrig },
-      "args",
-      async ({
-        beforeHooksResult: [filter, options],
-        invocationSymbol: parentInvocationSymbol
-      }) => {
-        return this.#tryCatchDelete(
-          {
-            caller: "deleteMany",
-            argsOrig,
-            filter,
-            args: [filter, options],
-            parentInvocationSymbol
-          },
-          async ({
-            beforeHooksResult: chainedFilter,
-            _id,
-          }) => {
-            if (chainedFilter === SkipDocument) {
-              return {
-                deletedCount: 0
-              };
-            }
-            return this.#collection.deleteOne(
-              // @ts-expect-error
-              { $and: [chainedFilter, { _id }] },
-              options
-            );
-          },
-          () => this.#collection.deleteMany(filter, options),
-          undefined,
-          options
-        );
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "deleteMany"
       },
-      origOptions);
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents.deleteMany,
+        { args: argsOrig },
+        "args",
+        async ({
+          beforeHooksResult: [filter, options],
+          invocationSymbol: parentInvocationSymbol
+        }) => {
+          return this.#tryCatchDelete(
+            {
+              caller: "deleteMany",
+              argsOrig,
+              filter,
+              args: [filter, options],
+              parentInvocationSymbol
+            },
+            async ({
+              beforeHooksResult: chainedFilter,
+              _id,
+            }) => {
+              if (chainedFilter === SkipDocument) {
+                return {
+                  deletedCount: 0
+                };
+              }
+              return this.#collection.deleteOne(
+                // @ts-expect-error
+                { $and: [chainedFilter, { _id }] },
+                options
+              );
+            },
+            () => this.#collection.deleteMany(filter, options),
+            undefined,
+            options
+          );
+        },
+        origOptions
+      ),
+      origOptions
+    );
   }
 
   on<K extends keyof CollectionHookedEventMap<TSchema>>(

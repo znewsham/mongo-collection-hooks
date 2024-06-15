@@ -2,6 +2,7 @@ import { CursorParams, CursorParamsWithArgs, CursorParamsWithArgsAndResult, Curs
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js"
 import { BeforeAfterCallbackArgsAndReturn, ExtractEventDefinitions } from "./helpersTypes.js"
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js"
+import { BeforeAfterErrorSharedEventDefinitions } from "./sharedEvents.js"
 
 
 export type BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema> = {
@@ -35,7 +36,8 @@ export type BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema> = {
 }
 
 export type BeforeAfterErrorAggregateCursorEventDefinitions<TSchema> = BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema>
-  & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
+  & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>
+  & BeforeAfterErrorSharedEventDefinitions<Document>;
 
 type AggregationCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "before", "before">
 type AggregationCursorAfterSuccessEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "after", "success", "success">

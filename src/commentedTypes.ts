@@ -38,9 +38,12 @@ export type ErrorT = {
 export type Result<O> = O extends {result: any} ? {
   /**The result of the call */
   result: O["result"]
+} : O extends {result?: any} ? {
+  /**The result of the call */
+  result?: O["result"]
 } : {}
 
-export type ResultOrError<O> = (O extends {result: any } ? {
+export type ResultOrError<O> = (O extends {result?: any } ? {
   result?: O["result"]
 } : {}) & { error?: any };
 
@@ -48,3 +51,4 @@ export type ResultOrig<O> = O extends {result: any} ? {
   /**The result of the call */
   resultOrig: O["result"]
 } : {}
+

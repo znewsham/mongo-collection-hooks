@@ -211,6 +211,7 @@ export type BeforeInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
     & O["custom"]
 }
 
+
 export type BeforeInternalEmitArgsNoArgsOrig<O extends CommonDefinitionWithCaller> = {
   emitArgs:
     ThisArg<O>
@@ -219,6 +220,27 @@ export type BeforeInternalEmitArgsNoArgsOrig<O extends CommonDefinitionWithCalle
     & ParentInvocationSymbol
     & InvocationSymbol
     & O["custom"]
+}
+
+export type BeforeStar<O extends CommonDefinitionWithCaller> = {
+  emitArgs:
+    ThisArg<O>
+    & Args<O>
+    & { caller?: Caller<O>["caller"] }
+    & { parentInvocationSymbol?: ParentInvocationSymbol["parentInvocationSymbol"] }
+    & InvocationSymbol
+    & O["custom"]
+}
+
+export type AfterStar<O extends CommonDefinitionWithCaller, resultOrError> = {
+  emitArgs:
+    ThisArg<O>
+    & Args<O>
+    & { caller?: Caller<O>["caller"] }
+    & { parentInvocationSymbol?: ParentInvocationSymbol["parentInvocationSymbol"] }
+    & InvocationSymbol
+    & O["custom"]
+    & resultOrError
 }
 
 export type CommonDefinition = {

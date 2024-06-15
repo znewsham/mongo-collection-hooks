@@ -54,115 +54,122 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
   }
 
   async #triggerInit() {
-    const invocationSymbol = Symbol("aggregation.cursor.execute");
-    assertCaller(this.#caller, "aggregation.cursor.execute");
-    await this.#ee.callAllAwaitableInParallel(
-      {
-        caller: this.#caller,
-        parentInvocationSymbol: this.#currentInvocationSymbol,
-        thisArg: this,
-        invocationSymbol
-      },
-      this.#invocationOptions,
-      Events.before["aggregation.cursor.execute"],
-      Events.before["cursor.execute"]
-    );
-    try {
-      if (this.#interceptExecute) {
-        await new Promise((resolve, reject) => {
-          // @ts-expect-error Naughty naughty. We need to manually init the cursor if we want to know what causes an execution - maybe we don't care
-          this.#cursor._initialize((err, state) => {
-            if (err) {
-              reject(err);
-            }
-            else {
-              resolve(state);
-            }
-          });
-        });
-      }
-      await this.#ee.callAllAwaitableInParallel(
-        {
-          caller: this.#caller,
-          parentInvocationSymbol: this.#currentInvocationSymbol,
-          thisArg: this,
-          invocationSymbol
-        },
-        this.#invocationOptions,
-        Events.afterSuccess["aggregation.cursor.execute"],
-        Events.afterSuccess["cursor.execute"]
-      );
-    }
-    catch (error) {
-      await this.#ee.callAllAwaitableInParallel(
-        {
-          caller: this.#caller,
-          parentInvocationSymbol: this.#currentInvocationSymbol,
-          thisArg: this,
-          invocationSymbol,
-          error
-        },
-        this.#invocationOptions,
-        Events.afterError["aggregation.cursor.execute"],
-        Events.afterError["cursor.execute"]
-      );
-      throw error;
-    }
-  }
-
-  async next(): Promise<TSchema | null> {
-    const invocationSymbol = Symbol("aggregation.next");
-    await this.#ee.callAllAwaitableInParallel(
-      {
-        caller: "aggregate",
-        parentInvocationSymbol: this.#currentInvocationSymbol,
-        thisArg: this,
-        invocationSymbol
-      },
-      this.#invocationOptions,
-      Events.before["aggregation.cursor.next"],
-      Events.before["cursor.next"],
-    );
-    let next: TSchema | null;
-    let gotNext = false;
-    try {
-      if (this.#cursor.id === undefined) {
-        await this.#wrapCaller("aggregation.cursor.next", () => this.#triggerInit(), invocationSymbol);
-      }
-      next = await this.#cursor.next();
-      gotNext = true;
-      next = await this.#ee.callAllAwaitableChainWithKey(
-        {
-          caller: "aggregate",
-          result: next,
-          thisArg: this,
-          parentInvocationSymbol: this.#currentInvocationSymbol,
-          invocationSymbol
-        },
-        "result",
-        this.#invocationOptions,
-        Events.afterSuccess["aggregation.cursor.next"],
-        Events.afterSuccess["cursor.next"]
-      );
-    }
-    catch (err) {
-      if (!gotNext) {
+    return this.#tryCatchEmit(
+      this.#ee,
+      async () => {
+        const invocationSymbol = Symbol("aggregation.cursor.execute");
+        assertCaller(this.#caller, "aggregation.cursor.execute");
         await this.#ee.callAllAwaitableInParallel(
           {
-            caller: "aggregate",
-            error: err,
+            caller: this.#caller,
+            parentInvocationSymbol: this.#currentInvocationSymbol,
             thisArg: this,
-            parentInvocationSymbol: this.#aggregateInvocationSymbol,
             invocationSymbol
           },
           this.#invocationOptions,
-          Events.afterError["aggregation.cursor.next"],
-          Events.afterError["cursor.next"]
+          Events.before["aggregation.cursor.execute"],
+          Events.before["cursor.execute"]
         );
-      }
-      throw err;
-    }
-    return next;
+        try {
+          if (this.#interceptExecute) {
+            await new Promise((resolve, reject) => {
+              // @ts-expect-error Naughty naughty. We need to manually init the cursor if we want to know what causes an execution - maybe we don't care
+              this.#cursor._initialize((err, state) => {
+                if (err) {
+                  reject(err);
+                }
+                else {
+                  resolve(state);
+                }
+              });
+            });
+          }
+          await this.#ee.callAllAwaitableInParallel(
+            {
+              caller: this.#caller,
+              parentInvocationSymbol: this.#currentInvocationSymbol,
+              thisArg: this,
+              invocationSymbol
+            },
+            this.#invocationOptions,
+            Events.afterSuccess["aggregation.cursor.execute"],
+            Events.afterSuccess["cursor.execute"]
+          );
+        }
+        catch (error) {
+          await this.#ee.callAllAwaitableInParallel(
+            {
+              caller: this.#caller,
+              parentInvocationSymbol: this.#currentInvocationSymbol,
+              thisArg: this,
+              invocationSymbol,
+              error
+            },
+            this.#invocationOptions,
+            Events.afterError["aggregation.cursor.execute"],
+            Events.afterError["cursor.execute"]
+          );
+          throw error;
+        }
+      },
+      this.#caller,
+      [],
+      {
+        operation: "aggregation.cursor.execute",
+        parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        thisArg: this
+      },
+      false,
+      false,
+      undefined,
+      this.#invocationOptions,
+      InternalEvents["*"],
+    );
+  }
+
+  async next(): Promise<TSchema | null> {
+    return this.#tryCatchEmit(
+      this.#ee,
+      async () => {
+        assertCaller(this.#caller, "aggregation.cursor.next");
+        const invocationSymbol = Symbol("aggregation.next");
+        return this.#tryCatchEmit(
+          this.#ee,
+          async ({ invocationSymbol }) => this.#wrapCaller("aggregation.cursor.next", async () => {
+            if (this.#cursor.id === undefined) {
+              await this.#triggerInit();
+            }
+            let next: TSchema | null = await this.#cursor.next();
+
+            return next;
+          }, invocationSymbol),
+          this.#caller,
+          undefined,
+          {
+            parentInvocationSymbol: this.#currentInvocationSymbol,
+            thisArg: this
+          },
+          false,
+          true,
+          undefined,
+          this.#invocationOptions,
+          InternalEvents["aggregation.cursor.next"],
+          InternalEvents["cursor.next"]
+        )
+      },
+      this.#caller,
+      [],
+      {
+        operation: "aggregation.cursor.next",
+        thisArg: this,
+        parentInvocationSymbol: this.#aggregateInvocationSymbol,
+      },
+      false,
+      false,
+      undefined,
+      this.#invocationOptions,
+      InternalEvents["*"],
+    );
   }
 
   async #wrapCaller<T>(
@@ -183,54 +190,88 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
   }
 
   async toArray(): Promise<TSchema[]> {
-    assertCaller(this.#caller, "aggregation.cursor.toArray");
     return this.#tryCatchEmit(
       this.#ee,
-      ({
-        invocationSymbol
-      }) => this.#wrapCaller("aggregation.cursor.toArray", async () => {
-        if (this.#cursor.id === undefined) {
-          await this.#triggerInit();
-        }
-        return this.#cursor.toArray();
-      }, invocationSymbol),
+      () => {
+        assertCaller(this.#caller, "aggregation.cursor.toArray");
+        return this.#tryCatchEmit(
+          this.#ee,
+          ({
+            invocationSymbol
+          }) => this.#wrapCaller("aggregation.cursor.toArray", async () => {
+            if (this.#cursor.id === undefined) {
+              await this.#triggerInit();
+            }
+            return this.#cursor.toArray();
+          }, invocationSymbol),
+          this.#caller,
+          undefined,
+          {
+            parentInvocationSymbol: this.#aggregateInvocationSymbol,
+            thisArg: this
+          },
+          false,
+          true,
+          undefined,
+          this.#invocationOptions,
+          InternalEvents["aggregation.cursor.toArray"],
+          InternalEvents["cursor.toArray"],
+        );
+      },
       this.#caller,
-      undefined,
+      [],
       {
+        operation: "aggregation.cursor.toArray",
+        thisArg: this,
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
-        thisArg: this
       },
       false,
-      true,
+      false,
       undefined,
       this.#invocationOptions,
-      InternalEvents["aggregation.cursor.toArray"],
-      InternalEvents["cursor.toArray"],
+      InternalEvents["*"],
     );
   }
 
   async forEach(iterator: (doc: TSchema) => boolean | void): Promise<void> {
-    assertCaller(this.#caller, "aggregation.cursor.forEach");
     return this.#tryCatchEmit(
       this.#ee,
-      ({ invocationSymbol, beforeHooksResult: [chainedIterator] }) => this.#wrapCaller("aggregation.cursor.forEach", async () => {
-        if (this.#cursor.id === undefined) {
-          await this.#triggerInit();
-        }
-        return this.#cursor.forEach(chainedIterator);
-      }, invocationSymbol),
+      () => {
+        assertCaller(this.#caller, "aggregation.cursor.forEach");
+        return this.#tryCatchEmit(
+          this.#ee,
+          ({ invocationSymbol, beforeHooksResult: [chainedIterator] }) => this.#wrapCaller("aggregation.cursor.forEach", async () => {
+            if (this.#cursor.id === undefined) {
+              await this.#triggerInit();
+            }
+            return this.#cursor.forEach(chainedIterator);
+          }, invocationSymbol),
+          this.#caller,
+          [iterator],
+          {
+            parentInvocationSymbol: this.#aggregateInvocationSymbol,
+            thisArg: this,
+          },
+          true,
+          false,
+          "args",
+          this.#invocationOptions,
+          "aggregation.cursor.forEach",
+          "cursor.forEach"
+        );
+      },
       this.#caller,
       [iterator],
       {
-        parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        operation: "aggregation.cursor.forEach",
         thisArg: this,
+        parentInvocationSymbol: this.#aggregateInvocationSymbol,
       },
-      true,
       false,
-      "args",
+      false,
+      undefined,
       this.#invocationOptions,
-      "aggregation.cursor.forEach",
-      "cursor.forEach"
+      InternalEvents["*"],
     );
   }
 
@@ -238,6 +279,18 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     const invocationSymbol = Symbol("aggregation.cursor.asyncIterator");
     let started = false;
     let errored = false;
+    await this.#ee.callAllAwaitableInParallel(
+      {
+        caller: "aggregate",
+        invocationSymbol,
+        parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        operation: "aggregation.cursor.asyncIterator",
+        thisArg: this,
+        args: []
+      },
+      this.#invocationOptions,
+      "before.*"
+    );
     await this.#ee.callAllAwaitableInParallel(
       {
         caller: "aggregate",
@@ -273,6 +326,21 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         "after.aggregation.cursor.asyncIterator.error",
         "after.cursor.asyncIterator.error"
       );
+
+      await this.#ee.callAllAwaitableInParallel(
+        {
+          caller: "aggregate",
+          invocationSymbol,
+          parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          operation: "aggregation.cursor.asyncIterator",
+          thisArg: this,
+          args: [],
+          error: e
+        },
+        this.#invocationOptions,
+        "after.*.error",
+        "after.*",
+      );
       throw e;
     }
     finally {
@@ -289,6 +357,20 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         this.#invocationOptions,
         "after.aggregation.cursor.asyncIterator.success",
         "after.cursor.asyncIterator.success"
+      );
+
+      await this.#ee.callAllAwaitableInParallel(
+        {
+          caller: "aggregate",
+          invocationSymbol,
+          parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          operation: "aggregation.cursor.asyncIterator",
+          thisArg: this,
+          args: [],
+        },
+        this.#invocationOptions,
+        "after.*.success",
+        "after.*",
       );
     }
   }

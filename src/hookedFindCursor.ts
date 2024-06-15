@@ -153,64 +153,81 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
   }
 
   async #triggerInit() {
-    const invocationSymbol = Symbol("find.cursor.execute");
-    assertCaller(this.#caller, "find.cursor.execute");
-    await this.#ee.callAllAwaitableInParallel(
-      {
-        caller: this.#caller,
-        parentInvocationSymbol: this.#currentInvocationSymbol,
-        thisArg: this,
-        invocationSymbol
+    return this.#tryCatchEmit(
+      this.#ee,
+      async () => {
+        const invocationSymbol = Symbol("find.cursor.execute");
+        assertCaller(this.#caller, "find.cursor.execute");
+        await this.#ee.callAllAwaitableInParallel(
+          {
+            caller: this.#caller,
+            parentInvocationSymbol: this.#currentInvocationSymbol,
+            thisArg: this,
+            invocationSymbol
+          },
+          this.#invocationOptions,
+          Events.before["find.cursor.execute"],
+          Events.before["cursor.execute"]
+        );
+        try {
+          if (this.#interceptExecute) {
+            await new Promise((resolve, reject) => {
+              // @ts-expect-error Naughty naughty. We need to manually init the cursor if we want to know what causes an execution - maybe we don't care
+              this.#cursor._initialize((err, state) => {
+                if (err) {
+                  reject(err);
+                }
+                else {
+                  resolve(state);
+                }
+              });
+            });
+          }
+          await this.#ee.callAllAwaitableInParallel(
+            {
+              caller: this.#caller,
+              parentInvocationSymbol: this.#currentInvocationSymbol,
+              thisArg: this,
+              invocationSymbol
+            },
+            this.#invocationOptions,
+            Events.afterSuccess["find.cursor.execute"],
+            Events.after["find.cursor.execute"],
+            Events.afterSuccess["cursor.execute"],
+            Events.after["find.cursor.execute"],
+          );
+        }
+        catch (error) {
+          await this.#ee.callAllAwaitableInParallel(
+            {
+              caller: this.#caller,
+              parentInvocationSymbol: this.#currentInvocationSymbol,
+              thisArg: this,
+              invocationSymbol,
+              error
+            },
+            this.#invocationOptions,
+            Events.afterError["find.cursor.execute"],
+            Events.after["find.cursor.execute"],
+            Events.afterError["cursor.execute"],
+            Events.after["cursor.execute"],
+          );
+          throw error;
+        }
       },
+      this.#caller,
+      [],
+      {
+        operation: "find.cursor.execute",
+        parentInvocationSymbol: this.#findInvocationSymbol,
+        thisArg: this
+      },
+      false,
+      false,
+      undefined,
       this.#invocationOptions,
-      Events.before["find.cursor.execute"],
-      Events.before["cursor.execute"]
+      InternalEvents["*"],
     );
-    try {
-      if (this.#interceptExecute) {
-        await new Promise((resolve, reject) => {
-          // @ts-expect-error Naughty naughty. We need to manually init the cursor if we want to know what causes an execution - maybe we don't care
-          this.#cursor._initialize((err, state) => {
-            if (err) {
-              reject(err);
-            }
-            else {
-              resolve(state);
-            }
-          });
-        });
-      }
-      await this.#ee.callAllAwaitableInParallel(
-        {
-          caller: this.#caller,
-          parentInvocationSymbol: this.#currentInvocationSymbol,
-          thisArg: this,
-          invocationSymbol
-        },
-        this.#invocationOptions,
-        Events.afterSuccess["find.cursor.execute"],
-        Events.after["find.cursor.execute"],
-        Events.afterSuccess["cursor.execute"],
-        Events.after["find.cursor.execute"],
-      );
-    }
-    catch (error) {
-      await this.#ee.callAllAwaitableInParallel(
-        {
-          caller: this.#caller,
-          parentInvocationSymbol: this.#currentInvocationSymbol,
-          thisArg: this,
-          invocationSymbol,
-          error
-        },
-        this.#invocationOptions,
-        Events.afterError["find.cursor.execute"],
-        Events.after["find.cursor.execute"],
-        Events.afterError["cursor.execute"],
-        Events.after["cursor.execute"],
-      );
-      throw error;
-    }
   }
 
   async #wrapCaller<T>(caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next">, fn: () => Promise<T>, invocationSymbol?: symbol): Promise<T> {
@@ -228,101 +245,169 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
   }
 
   async next(): Promise<TSchema | null> {
-    assertCaller(this.#caller, "find.cursor.next");
     return this.#tryCatchEmit(
       this.#ee,
-      async ({ invocationSymbol }) => this.#wrapCaller("find.cursor.next", async () => {
-        if (this.#cursor.id === undefined) {
-          await this.#triggerInit();
-        }
-        let next: TSchema | null = await this.#cursor.next();
+      () => {
+        assertCaller(this.#caller, "find.cursor.next");
+        return this.#tryCatchEmit(
+          this.#ee,
+          async ({ invocationSymbol }) => this.#wrapCaller("find.cursor.next", async () => {
+            if (this.#cursor.id === undefined) {
+              await this.#triggerInit();
+            }
+            let next: TSchema | null = await this.#cursor.next();
 
-        if (this.#transform && next) {
-          next = this.#transform(next);
-        }
-        return next;
-      }, invocationSymbol),
+            if (this.#transform && next) {
+              next = this.#transform(next);
+            }
+            return next;
+          }, invocationSymbol),
+          this.#caller,
+          undefined,
+          {
+            parentInvocationSymbol: this.#currentInvocationSymbol,
+            thisArg: this
+          },
+          false,
+          true,
+          undefined,
+          this.#invocationOptions,
+          InternalEvents["find.cursor.next"],
+          InternalEvents["cursor.next"]
+        )
+      },
       this.#caller,
-      undefined,
+      [],
       {
-        parentInvocationSymbol: this.#currentInvocationSymbol,
+        operation: "find.cursor.next",
+        parentInvocationSymbol: this.#findInvocationSymbol,
         thisArg: this
       },
       false,
-      true,
+      false,
       undefined,
       this.#invocationOptions,
-      InternalEvents["find.cursor.next"],
-      InternalEvents["cursor.next"]
-    )
+      InternalEvents["*"],
+    );
   }
 
   async toArray(): Promise<TSchema[]> {
-    assertCaller(this.#caller, "find.cursor.toArray");
     return this.#tryCatchEmit(
       this.#ee,
-      ({ invocationSymbol }) => this.#wrapCaller("find.cursor.toArray", async () => {
-        if (this.#cursor.id === undefined) {
-          await this.#triggerInit();
-        }
-        return this.#cursor.toArray();
-      }, invocationSymbol),
+      () => {
+        assertCaller(this.#caller, "find.cursor.toArray");
+        return this.#tryCatchEmit(
+          this.#ee,
+          ({ invocationSymbol }) => this.#wrapCaller("find.cursor.toArray", async () => {
+            if (this.#cursor.id === undefined) {
+              await this.#triggerInit();
+            }
+            return this.#cursor.toArray();
+          }, invocationSymbol),
+          this.#caller,
+          undefined,
+          {
+            parentInvocationSymbol: this.#currentInvocationSymbol,
+            thisArg: this
+          },
+          false,
+          true,
+          undefined,
+          this.#invocationOptions,
+          InternalEvents["find.cursor.toArray"],
+          InternalEvents["cursor.toArray"],
+        );
+      },
       this.#caller,
-      undefined,
+      [],
       {
-        parentInvocationSymbol: this.#currentInvocationSymbol,
+        operation: "find.cursor.toArray",
+        parentInvocationSymbol: this.#findInvocationSymbol,
         thisArg: this
       },
       false,
-      true,
+      false,
       undefined,
       this.#invocationOptions,
-      InternalEvents["find.cursor.toArray"],
-      InternalEvents["cursor.toArray"],
+      InternalEvents["*"],
     );
   }
 
   async count(options?: CountOptions): Promise<number> {
-    assertCaller(this.#caller, "find.cursor.count");
     return this.#tryCatchEmit(
       this.#ee,
-      ({ beforeHooksResult: optionsToUse }) => this.#cursor.count(...optionsToUse),
+      () => {
+        assertCaller(this.#caller, "find.cursor.count");
+        return this.#tryCatchEmit(
+          this.#ee,
+          ({ beforeHooksResult: optionsToUse }) => this.#cursor.count(...optionsToUse),
+          this.#caller,
+          [options],
+          {
+            parentInvocationSymbol: this.#currentInvocationSymbol,
+            thisArg: this
+          },
+          true,
+          true,
+          "args",
+          this.#invocationOptions,
+          "find.cursor.count"
+        );
+      },
       this.#caller,
       [options],
       {
-        parentInvocationSymbol: this.#currentInvocationSymbol,
+        operation: "find.cursor.count",
+        parentInvocationSymbol: this.#findInvocationSymbol,
         thisArg: this
       },
-      true,
-      true,
-      "args",
+      false,
+      false,
+      undefined,
       this.#invocationOptions,
-      "find.cursor.count"
+      InternalEvents["*"],
     );
   }
 
   async forEach(iterator: (doc: TSchema) => boolean | void): Promise<void> {
-    assertCaller(this.#caller, "find.cursor.forEach");
     return this.#tryCatchEmit(
       this.#ee,
-      ({ beforeHooksResult: [chainedIterator], invocationSymbol }) => this.#wrapCaller("find.cursor.forEach", async () => {
-        if (this.#cursor.id === undefined) {
-          await this.#triggerInit();
-        }
-        return this.#cursor.forEach(chainedIterator);
-      }, invocationSymbol),
+      () => {
+        assertCaller(this.#caller, "find.cursor.forEach");
+        return this.#tryCatchEmit(
+          this.#ee,
+          ({ beforeHooksResult: [chainedIterator], invocationSymbol }) => this.#wrapCaller("find.cursor.forEach", async () => {
+            if (this.#cursor.id === undefined) {
+              await this.#triggerInit();
+            }
+            return this.#cursor.forEach(chainedIterator);
+          }, invocationSymbol),
+          this.#caller,
+          [iterator],
+          {
+            parentInvocationSymbol: this.#currentInvocationSymbol,
+            thisArg: this
+          },
+          true,
+          false,
+          "args",
+          this.#invocationOptions,
+          "find.cursor.forEach",
+          "cursor.forEach"
+        );
+      },
       this.#caller,
       [iterator],
       {
-        parentInvocationSymbol: this.#currentInvocationSymbol,
-        thisArg: this
+        operation: "find.cursor.forEach",
+        thisArg: this,
+        parentInvocationSymbol: this.#findInvocationSymbol,
       },
-      true,
       false,
-      "args",
+      false,
+      undefined,
       this.#invocationOptions,
-      "find.cursor.forEach",
-      "cursor.forEach"
+      InternalEvents["*"],
     );
   }
 
@@ -330,6 +415,18 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     const invocationSymbol = Symbol("find.cursor.asyncIterator");
     let started = false;
     let errored = false;
+    await this.#ee.callAllAwaitableInParallel(
+      {
+        caller: "find",
+        invocationSymbol,
+        parentInvocationSymbol: this.#findInvocationSymbol,
+        operation: "find.cursor.asyncIterator",
+        thisArg: this,
+        args: []
+      },
+      this.#invocationOptions,
+      "before.*"
+    );
     await this.#ee.callAllAwaitableInParallel(
       {
         caller: "find",
@@ -368,6 +465,21 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         "after.cursor.asyncIterator.error",
         "after.cursor.asyncIterator"
       );
+
+      await this.#ee.callAllAwaitableInParallel(
+        {
+          caller: "find",
+          invocationSymbol,
+          parentInvocationSymbol: this.#findInvocationSymbol,
+          operation: "find.cursor.asyncIterator",
+          thisArg: this,
+          args: [],
+          error: e
+        },
+        this.#invocationOptions,
+        "after.*.error",
+        "after.*",
+      );
       throw e;
     }
     finally {
@@ -386,6 +498,20 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         "after.find.cursor.asyncIterator",
         "after.cursor.asyncIterator.success",
         "after.cursor.asyncIterator"
+      );
+
+      await this.#ee.callAllAwaitableInParallel(
+        {
+          caller: "find",
+          invocationSymbol,
+          parentInvocationSymbol: this.#findInvocationSymbol,
+          operation: "find.cursor.asyncIterator",
+          thisArg: this,
+          args: [],
+        },
+        this.#invocationOptions,
+        "after.*.success",
+        "after.*",
       );
     }
   }

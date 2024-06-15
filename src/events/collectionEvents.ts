@@ -20,7 +20,7 @@ import type {
   ReplaceOptions
 } from "mongodb"
 
-import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs } from "./helpersTypes.js"
+import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
 import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
 import { Args, ArgsOrig, ErrorT, InvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
@@ -29,6 +29,7 @@ import { HookedCollectionInterface } from "./hookedCollectionInterface.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js";
+import { BeforeAfterErrorSharedEventDefinitions, SharedCallbackArgsAndReturn } from "./sharedEvents.js";
 
 type WithDocumentDefineHookOptions<TSchema extends Document> = {
   /** The projection used when you call `.fullDocument()` it will be combined with the `projection` of every other hook being ran */
@@ -53,7 +54,8 @@ export type CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema extends Docum
 export type CollectionBeforeAfterErrorEventDefinitions<TSchema extends Document> = CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>
   & BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema>
   & BeforeAfterErrorAggregationOnlyCursorEventDefinitions<TSchema>
-  & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
+  & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>
+  & BeforeAfterErrorSharedEventDefinitions<TSchema>;
 
 type UpdateDeleteDefineHookOptions<TSchema extends Document, K extends "update" | "delete"> = {
   /** A function to indicate whether the hook should run or not. Mostly useful for before update hooks, or after update using fetchPrevious. These hooks will run *before* we fetch the document. */
@@ -175,12 +177,12 @@ type UpdateCommon<TSchema extends Document> = {
   isPromise: true,
 }
 
-export type CollectionBeforeEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "before", "before">
-export type CollectionAfterSuccessEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "success", "success">
-export type CollectionAfterErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
-export type CollectionAfterEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "after">
+type CollectionBeforeEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "before", "before">
+type CollectionAfterSuccessEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "success", "success">
+type CollectionAfterErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
+type CollectionAfterEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "after">
 
-export type AllCollectionEventDefinitions<TSchema extends Document> = CollectionBeforeEventDefinitions<TSchema>
+type AllCollectionEventDefinitions<TSchema extends Document> = CollectionBeforeEventDefinitions<TSchema>
   & CollectionAfterErrorEventDefinitions<TSchema>
   & CollectionAfterSuccessEventDefinitions<TSchema>
   & CollectionAfterEventDefinitions<TSchema>
@@ -188,12 +190,25 @@ export type AllCollectionEventDefinitions<TSchema extends Document> = Collection
 
 type CollectionCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<AllCollectionEventDefinitions<TSchema>>
 
+
+// const t: CollectionCallbackArgsAndReturn<Document>["before.find"] = {
+//   callbackArgs,
+//   caller,
+//   emitArgs,
+//   isPromise,
+//   options,
+//   returnEmitName,
+//   returns
+// }
 /**
  * @external
  */
 export type CollectionHookedEventMap<TSchema extends Document> = CollectionCallbackArgsAndReturn<TSchema>
   & FindCursorHookedEventMap<TSchema>
   & AggregationCursorHookedEventMap<TSchema>
+  & SharedCallbackArgsAndReturn<TSchema>
+
+;
 
 export type AmendedInsertOneOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertOne"> & InsertOneOptions;
 export type AmendedBulkWriteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertMany"> & BulkWriteOptions;
@@ -220,13 +235,6 @@ type TopLevelCall<O extends CommonDefinition & { result: any }> = {
   error: NoReturns<O> & AfterTopLevelErrorEmitArgs<O> & Pick<O, "options">,
   after: ReturnsResult<O> & AfterTopLevelEmitArgs<O> & Pick<O, "options">
   caller: never
-};
-
-type AllCommon<TSchema extends Document> = {
-  args: any,
-  thisArg: HookedCollectionInterface<TSchema> | HookedAggregationCursorInterface<TSchema> | HookedFindCursorInterface<TSchema>,
-  isPromise: true,
-  caller: keyof BeforeAfterErrorCollectionEventDefinitions<any> | keyof BeforeAfterErrorAggregationOnlyCursorEventDefinitions<any> | keyof BeforeAfterErrorFindOnlyCursorEventDefinitions<any>
 };
 
 export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document> = {
@@ -312,10 +320,5 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     thisArg: HookedCollectionInterface<TSchema>,
     result: any[]
   }>,
-  // "*": {
-  //   before: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>
-  //   success: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>
-  //   error: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>,
-  //   caller: AllCommon<TSchema>["caller"]
-  // }
 };
+

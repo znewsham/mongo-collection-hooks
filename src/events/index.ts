@@ -3,10 +3,11 @@ import type {
 } from "mongodb"
 import { CallbackAndOptionsOfEm, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
 import { NestedProjectionOfTSchema, SkipDocument } from "./helpersTypes.js";
-import { AllCollectionEventDefinitions, BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions } from "./collectionEvents.js";
+import { BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions, CollectionHookedEventMap } from "./collectionEvents.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js";
+import { BeforeAfterErrorSharedEventDefinitions } from "./sharedEvents.js";
 export {
   AmendedInsertOneOptions,
   AmendedBulkWriteOptions,
@@ -32,7 +33,8 @@ export { SkipDocument };
 type _BeforeAfterEventNames = keyof BeforeAfterErrorCollectionEventDefinitions<Document>
   | keyof BeforeAfterErrorFindOnlyCursorEventDefinitions<Document>
   | keyof BeforeAfterErrorAggregationOnlyCursorEventDefinitions<Document>
-  | keyof BeforeAfterErrorGenericCursorEventDefinitions<Document>;
+  | keyof BeforeAfterErrorGenericCursorEventDefinitions<Document>
+  | keyof BeforeAfterErrorSharedEventDefinitions<Document>;
 type BeforeAfterEventNames<limit extends _BeforeAfterEventNames = _BeforeAfterEventNames> = _BeforeAfterEventNames & limit;
 
 type MapWithCaller={[k in string]: { caller: string | undefined }}
@@ -42,7 +44,9 @@ export type CallerType<k extends BeforeAfterEventNames = BeforeAfterEventNames> 
 
 
 
-type _EventNames = keyof AllCollectionEventDefinitions<Document> | keyof FindCursorHookedEventMap<Document> | keyof AggregationCursorHookedEventMap<Document>;
+type _EventNames = keyof CollectionHookedEventMap<Document>
+  | keyof FindCursorHookedEventMap<Document>
+  | keyof AggregationCursorHookedEventMap<Document>;
 
 
 export type EventNames<limit extends _EventNames = _EventNames> = _EventNames & limit;
@@ -104,7 +108,7 @@ function beforeAfterNames<K extends string>(k: K): BeforeAfterNames<K>[] {
   return [`before.${k}`, `after.${k}.success`, `after.${k}.error`, `after.${k}`];
 }
 
-type BeforeAfterGenericCursorNames = BeforeAfterNames<typeof GenericCursorEventsSuffixes[0]>;
+type BeforeAfterGenericCursorNames = BeforeAfterNames<typeof GenericCursorEventsSuffixes[0] | "*">;
 type BeforeAferFindCursorNames = BeforeAfterGenericCursorNames | BeforeAfterNames<typeof FindCursorEventsSuffixes[0]>;
 type BeforeAfterAggregateCursorNames = BeforeAfterGenericCursorNames | BeforeAfterNames<typeof AggregateCursorEventsSuffixes[0]>
 export const FindCursorEventsSet = new Set<BeforeAfterGenericCursorNames | BeforeAferFindCursorNames>([...FindCursorEventsSuffixes, ...GenericCursorEventsSuffixes].flatMap(eventSuffix => beforeAfterNames(eventSuffix)));
@@ -119,7 +123,7 @@ const beforeAfterEvents = [
   "findOne",
   "aggregate",
   "distinct",
-  // "*",
+  "*",
   ...FindCursorEventsSuffixes,
   ...AggregateCursorEventsSuffixes,
   ...GenericCursorEventsSuffixes

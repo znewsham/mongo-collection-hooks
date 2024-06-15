@@ -3,6 +3,7 @@ import { CursorParams, CursorParamsWithArgs, CursorParamsWithArgsAndResult, Curs
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js"
 import { BeforeAfterCallbackArgsAndReturn, ExtractEventDefinitions } from "./helpersTypes.js"
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js"
+import { BeforeAfterErrorSharedEventDefinitions } from "./sharedEvents.js"
 
 
 export type BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema> = {
@@ -40,7 +41,8 @@ export type BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema> = {
 }
 
 export type BeforeAfterErrorFindCursorEventDefinitions<TSchema> = BeforeAfterErrorFindOnlyCursorEventDefinitions<TSchema>
-  & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
+  & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>
+  & BeforeAfterErrorSharedEventDefinitions<Document>;
 
 
 type FindCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "before", "before">
