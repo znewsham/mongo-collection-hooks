@@ -18,11 +18,13 @@ export function defineInsertOne() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.insertOne.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "insertOne", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.insertOne.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "insertOne", () => { throw new Error("BAD CALL"); });
           return hookedCollection.insertOne({});
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
 

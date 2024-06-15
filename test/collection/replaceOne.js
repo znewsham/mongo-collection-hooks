@@ -17,11 +17,13 @@ export function defineReplaceOne() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.replaceOne.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "replaceOne", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.replaceOne.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "replaceOne", () => { throw new Error("BAD CALL"); });
           return hookedCollection.replaceOne({});
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
 

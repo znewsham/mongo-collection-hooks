@@ -15,11 +15,13 @@ export function defineFindOne() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.findOne.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "findOne", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.findOne.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "findOne", () => { throw new Error("BAD CALL"); });
           return hookedCollection.findOne();
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
   });

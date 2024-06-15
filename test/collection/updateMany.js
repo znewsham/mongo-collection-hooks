@@ -18,11 +18,13 @@ export function defineUpdateMany() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.updateMany.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "updateMany", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.updateMany.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "updateMany", () => { throw new Error("BAD CALL"); });
           return hookedCollection.updateMany({}, {});
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
 

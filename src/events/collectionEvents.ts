@@ -17,7 +17,10 @@ import type {
   FindOptions,
   AggregateOptions,
   WithoutId,
-  ReplaceOptions
+  ReplaceOptions,
+  CountOptions,
+  EstimatedDocumentCountOptions,
+  CountDocumentsOptions
 } from "mongodb"
 
 import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
@@ -218,7 +221,9 @@ export type AmendedAggregateOptions<HEM extends ChainedCallbackEventMap = Chaine
 export type AmendedReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "replaceOne"> & ReplaceOptions;
 export type AmendedDistinctOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "distinct"> & DistinctOptions;
 export type AmendedFindOptions<TSchema extends Document, caller extends "before.find" | "before.findOne" = "before.find" | "before.findOne", HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, caller> & FindOptions<TSchema>
-
+export type AmendedEstimatedDocumentCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "estimatedDocumentCount"> & EstimatedDocumentCountOptions;
+export type AmendedCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "count"> & CountOptions;
+export type AmendedCountDocumentsOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "countDocuments"> & CountDocumentsOptions;
 
 type InsertOneCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>, AmendedInsertOneOptions | undefined];
 type InsertManyCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>[], AmendedBulkWriteOptions | undefined];
@@ -228,6 +233,10 @@ export type UpdateCallArgs<TSchema> = readonly [Filter<TSchema>, UpdateFilter<TS
 export type ReplaceCallArgs<TSchema> = readonly [Filter<TSchema>, WithoutId<TSchema>, AmendedReplaceOptions | undefined];
 type DeleteCallArgs<TSchema> = readonly [Filter<TSchema>, AmendedDeleteOptions | undefined];
 type DistinctCallArgs<TSchema> = readonly [keyof WithId<TSchema>, Filter<TSchema>, AmendedDistinctOptions];
+type CountCallArgs<TSchema> = readonly [Filter<TSchema> | undefined, CountOptions | undefined];
+type EstimatedDocumentCountCallArgs = readonly [AmendedEstimatedDocumentCountOptions | undefined];
+type CountDocumentsCallArgs = readonly [Filter<Document> | undefined, CountDocumentsOptions | undefined];
+
 
 type TopLevelCall<O extends CommonDefinition & { result: any }> = {
   before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & Pick<O, "options">,
@@ -319,6 +328,21 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     args: DistinctCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
     result: any[]
+  }>,
+  count: TopLevelCall<{
+    args: CountCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: number
+  }>,
+  countDocuments: TopLevelCall<{
+    args: CountDocumentsCallArgs,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: number
+  }>,
+  estimatedDocumentCount: TopLevelCall<{
+    args: EstimatedDocumentCountCallArgs,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: number
   }>,
 };
 

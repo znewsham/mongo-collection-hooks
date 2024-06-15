@@ -17,11 +17,13 @@ export function defineDeleteMany() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.deleteMany.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "deleteMany", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.deleteMany.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "deleteMany", () => { throw new Error("BAD CALL"); });
           return hookedCollection.deleteMany({});
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
 

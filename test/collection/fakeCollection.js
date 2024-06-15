@@ -157,6 +157,14 @@ export class FakeCollection {
   countDocuments(filter) {
     return this.find(filter).count();
   }
+
+  count(filter) {
+    return this.find(filter).count();
+  }
+
+  async estimatedDocumentCount() {
+    return this.#data.length;
+  }
 }
 
 

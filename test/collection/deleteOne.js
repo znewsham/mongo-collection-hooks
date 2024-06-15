@@ -17,11 +17,13 @@ export function defineDeleteOne() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.deleteOne.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "deleteOne", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.deleteOne.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "deleteOne", () => { throw new Error("BAD CALL"); });
           return hookedCollection.deleteOne({});
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
 

@@ -10,6 +10,9 @@ import { defineFindOne } from "./findOne.js";
 import { defineFind } from "./find.js";
 import { defineAggregate } from "./aggregate.js";
 import { defineDeleteMany } from "./deleteMany.js";
+import { defineCount } from "./count.js";
+import { defineCountDocuments } from "./countDocuments.js";
+import { defineEstimatedDocumentCount } from "./estimatedDocumentCount.js";
 
 describe("collection", () => {
   defineInsertOne();
@@ -23,4 +26,7 @@ describe("collection", () => {
   defineFindOne();
   defineFind();
   defineAggregate();
+  defineCount();
+  defineCountDocuments();
+  defineEstimatedDocumentCount();
 });

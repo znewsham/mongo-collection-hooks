@@ -15,6 +15,8 @@ import type {
   ObjectId,
   DeleteResult,
   InsertOneResult,
+  EstimatedDocumentCountOptions,
+  CountDocumentsOptions,
 } from 'mongodb';
 import { HookedFindCursor } from "./hookedFindCursor.js";
 
@@ -51,7 +53,7 @@ import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from './utils.js';
 import { ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
-import { CollectionOnlyBeforeAfterErrorEventDefinitions } from './events/collectionEvents.js';
+import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, CollectionOnlyBeforeAfterErrorEventDefinitions } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 
 function assertReplacementHasId<TSchema>(replacement: WithoutId<TSchema>): asserts replacement is OptionalUnlessRequiredId<TSchema> {
@@ -1137,7 +1139,66 @@ export class HookedCollection<
     return this.#ee.awaitableOff(eventName, listener);
   }
 
-  count(filter?: Filter<TSchema> | undefined, options?: CountOptions | undefined): Promise<number> {
-    return this.#collection.count(filter, options);
+  count(filter?: Filter<TSchema> | undefined, options?: AmendedCountOptions | undefined): Promise<number> {
+    return this.#tryCatchEmit(
+      InternalEvents["*"],
+      {
+        args: [options],
+        operation: "count"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents["count"],
+        {
+          args: [filter, options]
+        },
+        "args",
+        ({ beforeHooksResult: [options] }) => this.#collection.count(options),
+        options
+      ),
+      options
+    );
+  }
+
+  estimatedDocumentCount(options?: AmendedEstimatedDocumentCountOptions | undefined): Promise<number> {
+    return this.#tryCatchEmit(
+      InternalEvents["*"],
+      {
+        args: [options],
+        operation: "estimatedDocumentCount"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents["estimatedDocumentCount"],
+        {
+          args: [options]
+        },
+        "args",
+        ({ beforeHooksResult: [options] }) => this.#collection.estimatedDocumentCount(options),
+        options
+      ),
+      options
+    );
+  }
+
+  countDocuments(filter?: Document | undefined, options?: AmendedCountDocumentsOptions | undefined): Promise<number> {
+    return this.#tryCatchEmit(
+      InternalEvents["*"],
+      {
+        args: [options],
+        operation: "countDocuments"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        InternalEvents["countDocuments"],
+        {
+          args: [filter, options]
+        },
+        "args",
+        ({ beforeHooksResult: [options] }) => this.#collection.countDocuments(options),
+        options
+      ),
+      options
+    );
   }
 }

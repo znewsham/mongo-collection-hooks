@@ -23,11 +23,13 @@ export function defineInsertMany() {
     });
 
     it("should call the error hook", async () => {
-      assert.rejects(
-        () => hookInParallel("after.insertMany.error", "result", async ({ hookedCollection, fakeCollection }) => {
-          mock.method(fakeCollection, "insertMany", () => { throw new Error(); });
+      await assert.rejects(
+        () => hookInParallel("after.insertMany.error", async ({ hookedCollection, fakeCollection }) => {
+          mock.method(fakeCollection, "insertMany", () => { throw new Error("BAD CALL"); });
           return hookedCollection.insertMany([]);
-        })
+        }),
+        /BAD CALL/,
+        "It rejected correctly"
       );
     });
 
