@@ -40,13 +40,15 @@ export function getTryCatch<
 
     let chainedArgs = args;
     const {
+      after: afterEvent,
       before: beforeEvent,
-      afterSuccess: afterEvent,
-      afterError: errorEvent
-    }: { before: `before.${IE}`, afterSuccess: `after.${IE}.success`, afterError: `after.${IE}.error` } = internalEventToBeforeAfterKey(internalEvent);
+      afterSuccess: successEvent,
+      afterError: errorEvent,
+    }: { before: `before.${IE}`, after: `after.${IE}`, afterSuccess: `after.${IE}.success`, afterError: `after.${IE}.error` } = internalEventToBeforeAfterKey(internalEvent);
     const additionalBeforeEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).before);
-    const additionalAfterEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).afterSuccess);
+    const additionalSuccessEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).afterSuccess);
     const additionalErrorEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).afterError);
+    const additionalAfterEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).after);
     if (chainArgs && chainArgsKey) {
       chainedArgs = await ee.callAllAwaitableChainWithKey(
         {
@@ -98,8 +100,10 @@ export function getTryCatch<
           "result",
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
           invocationOptions,
+          successEvent,
           afterEvent,
-          ...additionalAfterEvents
+          ...additionalSuccessEvents,
+          ...additionalAfterEvents,
         );
         if (chainedResult !== undefined) {
           result = chainedResult;
@@ -117,7 +121,9 @@ export function getTryCatch<
           },
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
           invocationOptions,
+          successEvent,
           afterEvent,
+          ...additionalSuccessEvents,
           ...additionalAfterEvents
         );
       }
@@ -138,7 +144,9 @@ export function getTryCatch<
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
           invocationOptions,
           errorEvent,
-          ...additionalErrorEvents
+          afterEvent,
+          ...additionalErrorEvents,
+          ...additionalAfterEvents,
         );
       }
       throw e;

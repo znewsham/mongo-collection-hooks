@@ -1,5 +1,5 @@
 import { StandardDefineHookOptions } from "../awaiatableEventEmitter.js";
-import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ThisArg } from "../commentedTypes.js";
+import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
 
 
 /**
@@ -116,13 +116,25 @@ export const SkipDocument = Symbol("SkipDocument");
 
 
 export type ExtractEventDefinitions<
-  EventMap extends Record<string, { before?: any, after?: any, error?: any }>,
+  EventMap extends Record<string, { before?: any, success?: any, error?: any, after?: any }>,
   Prefix extends string,
-  Accessor extends "before" | "after" | "error",
+  Accessor extends "before" | "success" | "error" | "after",
   Suffix extends string | number = number,
   K extends keyof EventMap & string = keyof EventMap & string
 > = {
   [k in K as (Suffix extends string ? `${Prefix}.${k}.${Suffix}`: `${Prefix}.${k}`)]: EventMap[k][Accessor]
+}
+
+export type AfterInternalSuccessEmitArgs<O extends CommonDefinitionWithCaller> = {
+  emitArgs:
+    ThisArg<O>
+    & Args<O>
+    & ArgsOrig<O>
+    & Result<O>
+    & Caller<O>
+    & InvocationSymbol
+    & ParentInvocationSymbol
+    & O["custom"]
 }
 
 export type AfterInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
@@ -130,7 +142,7 @@ export type AfterInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
     ThisArg<O>
     & Args<O>
     & ArgsOrig<O>
-    & Result<O>
+    & ResultOrError<O>
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
@@ -156,6 +168,16 @@ export type AfterInternalErrorEmitArgs<O extends Omit<CommonDefinitionWithCaller
     & InvocationSymbol
     & ParentInvocationSymbol
     & ErrorT
+    & O["custom"]
+}
+
+export type AfterInternalSuccessEmitArgsNoArgs<O extends CommonDefinitionWithCaller> = {
+  emitArgs:
+    ThisArg<O>
+    & ResultOrError<O>
+    & Caller<O>
+    & InvocationSymbol
+    & ParentInvocationSymbol
     & O["custom"]
 }
 

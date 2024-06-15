@@ -39,6 +39,22 @@ export function defineAsyncIteratorTests() {
       assert.deepEqual(await gatherFromIterator(hookedCursor), [1, 2, 3]);
       assert.strictEqual(calledMock.mock.callCount(), 1, "should call the hook");
     });
+    it("should work with after hooks when we don't consume all", async () => {
+      const calledMock = mock.fn(() => {});
+      const results = [];
+      const { hookedCursor } = getHookedCursor(
+        [1, 2, 3],
+        {
+          "after.find.cursor.asyncIterator.success": [{ listener: calledMock }]
+        }
+      );
+      for await (const result of hookedCursor) {
+        results.push(result);
+        break;
+      }
+      assert.deepEqual(results, [1]);
+      assert.strictEqual(calledMock.mock.callCount(), 1, "should call the hook");
+    });
     it("should work with error hooks", async () => {
       const calledMock = mock.fn(() => {});
       const { hookedCursor, fakeCursor } = getHookedCursor(

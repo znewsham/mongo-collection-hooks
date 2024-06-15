@@ -236,6 +236,8 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
 
   async *[Symbol.asyncIterator](): AsyncGenerator<TSchema, void, void> {
     const invocationSymbol = Symbol("aggregation.cursor.asyncIterator");
+    let started = false;
+    let errored = false;
     await this.#ee.callAllAwaitableInParallel(
       {
         caller: "aggregate",
@@ -252,22 +254,13 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         await this.#wrapCaller("aggregation.cursor.asyncIterator", () => this.#triggerInit(), invocationSymbol);
       }
       const iterator = this.#cursor[Symbol.asyncIterator]();
+      started = true;
       for await (const item of iterator) {
         yield item;
       }
-      await this.#ee.callAllAwaitableInParallel(
-        {
-          caller: "aggregate",
-          invocationSymbol,
-          parentInvocationSymbol: this.#aggregateInvocationSymbol,
-          thisArg: this
-        },
-        this.#invocationOptions,
-        "after.aggregation.cursor.asyncIterator.success",
-        "after.cursor.asyncIterator.success"
-      );
     }
     catch (e) {
+      errored = true;
       await this.#ee.callAllAwaitableInParallel(
         {
           caller: "aggregate",
@@ -279,6 +272,23 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         this.#invocationOptions,
         "after.aggregation.cursor.asyncIterator.error",
         "after.cursor.asyncIterator.error"
+      );
+      throw e;
+    }
+    finally {
+      if (errored || !started) {
+        return;
+      }
+      await this.#ee.callAllAwaitableInParallel(
+        {
+          caller: "aggregate",
+          invocationSymbol,
+          parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          thisArg: this
+        },
+        this.#invocationOptions,
+        "after.aggregation.cursor.asyncIterator.success",
+        "after.cursor.asyncIterator.success"
       );
     }
   }

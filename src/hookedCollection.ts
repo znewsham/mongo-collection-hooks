@@ -134,8 +134,7 @@ export class HookedCollection<
         }
       ) as unknown as HookedAggregationCursorInterface<T>;
 
-      const chainedCursor = this.#ee.callSyncChainWithKey(
-        Events.afterSuccess["aggregate"],
+      const chainedCursor = this.#ee.callAllSyncChainWithKey(
         {
           args: [chainedPipeline, chainedOptions],
           result: cursor,
@@ -144,7 +143,9 @@ export class HookedCollection<
           invocationSymbol
         },
         "result",
-        options
+        options,
+        Events.afterSuccess.aggregate,
+        Events.after.aggregate
       );
       if (chainedCursor !== undefined) {
         cursor = chainedCursor;
@@ -153,8 +154,7 @@ export class HookedCollection<
       return chainedCursor as unknown as HookedAggregationCursor<T>;
     }
     catch (e) {
-      this.#ee.callSyncChain(
-        Events.afterError["aggregate"],
+      this.#ee.callAllSyncChain(
         {
           args: [chainedPipeline, chainedOptions],
           error: e,
@@ -162,7 +162,9 @@ export class HookedCollection<
           thisArg: this,
           invocationSymbol
         },
-        options
+        options,
+        Events.afterError.aggregate,
+        Events.after.aggregate,
       );
       throw e;
     }
@@ -241,8 +243,7 @@ export class HookedCollection<
         }
       ) as HookedFindCursorInterface<T>;
 
-      const chainedCursor = this.#ee.callSyncChainWithKey(
-        Events.afterSuccess.find,
+      const chainedCursor = this.#ee.callAllSyncChainWithKey(
         {
           args: [chainedFilter, chainedOptions],
           result: cursor,
@@ -251,7 +252,9 @@ export class HookedCollection<
           invocationSymbol
         },
         "result",
-        options
+        options,
+        Events.afterSuccess.find,
+        Events.after.find
       );
       if (chainedCursor !== undefined) {
         cursor = chainedCursor;
@@ -259,8 +262,7 @@ export class HookedCollection<
       return cursor as unknown as HookedFindCursor<T>;
     }
     catch (e) {
-      this.#ee.callSyncChainWithKey(
-        Events.afterError.find,
+      this.#ee.callAllSyncChainWithKey(
         {
           args: [chainedFilter, chainedOptions],
           error: e,
@@ -269,14 +271,12 @@ export class HookedCollection<
           invocationSymbol
         },
         undefined,
-        options
+        options,
+        Events.afterError.find,
+        Events.after.find,
       );
       throw e;
     }
-  }
-
-  hasEvents(eventName: EventNames) {
-    return this.#ee.listenerCount(eventName) !== 0;
   }
 
   async #tryCatchEmit<
@@ -373,11 +373,12 @@ export class HookedCollection<
         beforeHooksResult: [docs, options]
       }) => {
         const beforeHooks = this.#ee.relevantAwaitableListeners(Events.before.insert, options);
-        const afterHooks = this.#ee.relevantAwaitableListeners(Events.afterSuccess.insert, options);
+        const afterSuccessHooks = this.#ee.relevantAwaitableListeners(Events.afterSuccess.insert, options);
         const afterErrorHooks = this.#ee.relevantAwaitableListeners(Events.afterError.insert, options);
+        const afterHooks = this.#ee.relevantAwaitableListeners(Events.after.insert, options);
         const hasBefore = !!beforeHooks.length;
-        const hasAfter = !!afterHooks.length;
-        const hasAfterError = !!afterErrorHooks.length;
+        const hasAfter = !!afterSuccessHooks.length || !!afterHooks.length;
+        const hasAfterError = !!afterErrorHooks.length || !afterHooks.length;
         if (!hasBefore && !hasAfter) {
           return this.#collection.insertMany(docs, options);
         }
@@ -448,7 +449,8 @@ export class HookedCollection<
                   thisArg: this
                 },
                 undefined,
-                Events.afterError.insert
+                Events.afterError.insert,
+                Events.after.insert
               );
               }));
             }
@@ -464,8 +466,7 @@ export class HookedCollection<
               if (doc === SkipDocument) {
                 return;
               }
-              return this.#ee.callAwaitableChainWithKey(
-                Events.afterSuccess.insert,
+              return this.#ee.callAllAwaitableChainWithKey(
                 {
                   caller: "insertMany",
                   args: [docs, options],
@@ -481,6 +482,8 @@ export class HookedCollection<
                 },
                 "result",
                 options,
+                Events.afterSuccess.insert,
+                Events.after.insert
               );
             }));
           }
@@ -528,20 +531,24 @@ export class HookedCollection<
     perDocFn: T,
     noListenersFn: T1,
     limit: number | undefined,
-    invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.delete" | "after.delete.success" | "after.delete.error">
+    invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.delete" | "after.delete.success" | "after.delete.error" | "after.delete">
   ): Promise<DeleteResult> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
     });
-    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.delete, invocationOptions)
+    const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.delete, invocationOptions)
+    .filter(({ options: hookOptions }) => {
+      return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
+    });
+    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
     });
     const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
     const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
     const beforeListeners = beforeListenersWithOptions.map(({ listener }) => listener);
-    const afterListeners = afterListenersWithOptions.map(({ listener }) => listener);
+    const afterListeners = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ listener }) => listener);
     const beforeProjection = unionOfProjections(beforeProjections);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
       return noListenersFn();
@@ -602,7 +609,7 @@ export class HookedCollection<
             result: partialResult,
           },
           "result",
-          afterListeners,
+          afterListeners
         );
         if (chainedResult !== undefined) {
           partialResult = chainedResult;
@@ -626,6 +633,7 @@ export class HookedCollection<
           },
           invocationOptions,
           Events.afterError.delete,
+          Events.after.delete
         );
         throw e;
       }
@@ -644,21 +652,25 @@ export class HookedCollection<
     perDocFn: T,
     noListenersFn: T1,
     limit: number | undefined,
-    invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.update" | "after.update.success" | "after.update.error">
+    invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.update" | "after.update.success" | "after.update.error" | "after.update">
   ): Promise<UpdateResult> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
     });
-    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.update, invocationOptions)
+    const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.update, invocationOptions)
+    .filter(({ options: hookOptions }) => {
+      return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
+    });
+    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
     });
     const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
     const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
     const beforeListeners = beforeListenersWithOptions.map(({ listener }) => listener);
-    const afterProjections = afterListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
-    const afterListeners = afterListenersWithOptions.map(({ listener }) => listener);
+    const afterProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const afterListeners = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ listener }) => listener);
 
     const beforeProjection = unionOfProjections(beforeProjections);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
@@ -777,6 +789,7 @@ export class HookedCollection<
             },
             invocationOptions,
             Events.afterError.update,
+            Events.after.update
           );
           throw e;
         }

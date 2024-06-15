@@ -99,9 +99,9 @@ const FindCursorEventsSuffixes = specificCursorEvents(findCursorEvents, "find.")
 const AggregateCursorEventsSuffixes = specificCursorEvents(cursorEvents, "aggregation.");
 const GenericCursorEventsSuffixes = specificCursorEvents(cursorEvents, "");
 
-type BeforeAfterNames<K extends string> = `before.${K}` | `after.${K}.success` | `after.${K}.error`;
+type BeforeAfterNames<K extends string> = `before.${K}` | `after.${K}.success` | `after.${K}.error` | `after.${K}`;
 function beforeAfterNames<K extends string>(k: K): BeforeAfterNames<K>[] {
-  return [`before.${k}`, `after.${k}.success`, `after.${k}.error`];
+  return [`before.${k}`, `after.${k}.success`, `after.${k}.error`, `after.${k}`];
 }
 
 type BeforeAfterGenericCursorNames = BeforeAfterNames<typeof GenericCursorEventsSuffixes[0]>;
@@ -119,7 +119,7 @@ const beforeAfterEvents = [
   "findOne",
   "aggregate",
   "distinct",
-  "*",
+  // "*",
   ...FindCursorEventsSuffixes,
   ...AggregateCursorEventsSuffixes,
   ...GenericCursorEventsSuffixes
@@ -129,22 +129,25 @@ const beforeAfterEvents = [
 export const Events: {
   before: { [k in BeforeAfterEventNames]: `before.${k}`},
   afterSuccess: { [k in BeforeAfterEventNames]: `after.${k}.success`},
-  afterError: { [k in BeforeAfterEventNames]: `after.${k}.error`}
+  afterError: { [k in BeforeAfterEventNames]: `after.${k}.error`},
+  after: { [k in BeforeAfterEventNames]: `after.${k}`}
 } = {
   before: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `before.${key}`])) as { [k in BeforeAfterEventNames]: `before.${k}`},
   afterSuccess: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `after.${key}.success`])) as { [k in BeforeAfterEventNames]: `after.${k}.success`},
-  afterError: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `after.${key}.error`])) as { [k in BeforeAfterEventNames]: `after.${k}.error`}
+  afterError: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `after.${key}.error`])) as { [k in BeforeAfterEventNames]: `after.${k}.error`},
+  after: Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, `after.${key}`])) as { [k in BeforeAfterEventNames]: `after.${k}`}
 }
 
 export const InternalEvents = Object.fromEntries(beforeAfterEvents.filter(key => typeof key === "string").map(key => [key, key])) as { [k in BeforeAfterEventNames]: k};
 export function internalEventToBeforeAfterKey<
   // BAEM extends Record<string, any>,
   K extends string
->(key: K): { before: `before.${K}`, afterSuccess: `after.${K}.success`, afterError: `after.${K}.error` } {
+>(key: K): { before: `before.${K}`, afterSuccess: `after.${K}.success`, afterError: `after.${K}.error`, after: `after.${K}` } {
   return {
-    before: `before.${key}` as (`before.${K}`),
-    afterSuccess: `after.${key}.success` as (`after.${K}.success`),
-    afterError: `after.${key}.error` as (`after.${K}.error`)
+    before: `before.${key}`,
+    afterSuccess: `after.${key}.success`,
+    afterError: `after.${key}.error`,
+    after: `after.${key}`
   }
 }
 

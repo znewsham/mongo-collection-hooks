@@ -20,9 +20,9 @@ import type {
   ReplaceOptions
 } from "mongodb"
 
-import { AfterInternalEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument } from "./helpersTypes.js"
+import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs } from "./helpersTypes.js"
 import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
-import { Args, ArgsOrig, ErrorT, InvocationSymbol, Result, ThisArg } from "../commentedTypes.js";
+import { Args, ArgsOrig, ErrorT, InvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 import { HookedCollectionInterface } from "./hookedCollectionInterface.js";
@@ -88,7 +88,7 @@ type BeforeTopLevelEmitArgs<O extends CommonDefinition> = {
     & O["custom"]
 }
 
-type AfterTopLevelEmitArgs<O extends CommonDefinition> = {
+type AfterTopLevelSuccessEmitArgs<O extends CommonDefinition> = {
   emitArgs:
     ThisArg<O>
     & Args<O>
@@ -104,6 +104,15 @@ type AfterTopLevelErrorEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & InvocationSymbol
     & ErrorT
+};
+
+type AfterTopLevelEmitArgs<O extends CommonDefinition> = {
+  emitArgs:
+    ThisArg<O>
+    & Args<O>
+    & ArgsOrig<O>
+    & InvocationSymbol
+    & ResultOrError<O>
 };
 
 type InsertCommon<TSchema extends Document> = {
@@ -167,22 +176,22 @@ type UpdateCommon<TSchema extends Document> = {
 }
 
 export type CollectionBeforeEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "before", "before">
-export type CollectionAfterEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "after", "success">
-export type CollectionErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
+export type CollectionAfterSuccessEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "success", "success">
+export type CollectionAfterErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
+export type CollectionAfterEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "after">
 
-export type AllCollectionEventDefinitions<TSchema extends Document> = CollectionBeforeEventDefinitions<TSchema> & CollectionAfterEventDefinitions<TSchema> & CollectionErrorEventDefinitions<TSchema>
+export type AllCollectionEventDefinitions<TSchema extends Document> = CollectionBeforeEventDefinitions<TSchema>
+  & CollectionAfterErrorEventDefinitions<TSchema>
+  & CollectionAfterSuccessEventDefinitions<TSchema>
+  & CollectionAfterEventDefinitions<TSchema>
 
 
-type CollectionBeforeCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<CollectionBeforeEventDefinitions<TSchema>>
-type CollectionAfterCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<CollectionAfterEventDefinitions<TSchema>>
-type CollectionErrorCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<CollectionErrorEventDefinitions<TSchema>>
+type CollectionCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<AllCollectionEventDefinitions<TSchema>>
 
 /**
  * @external
  */
-export type CollectionHookedEventMap<TSchema extends Document> = CollectionBeforeCallbackArgsAndReturn<TSchema>
-  & CollectionAfterCallbackArgsAndReturn<TSchema>
-  & CollectionErrorCallbackArgsAndReturn<TSchema>
+export type CollectionHookedEventMap<TSchema extends Document> = CollectionCallbackArgsAndReturn<TSchema>
   & FindCursorHookedEventMap<TSchema>
   & AggregationCursorHookedEventMap<TSchema>
 
@@ -207,8 +216,9 @@ type DistinctCallArgs<TSchema> = readonly [keyof WithId<TSchema>, Filter<TSchema
 
 type TopLevelCall<O extends CommonDefinition & { result: any }> = {
   before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & Pick<O, "options">,
-  after: ReturnsResult<O> & AfterTopLevelEmitArgs<O> & Pick<O, "options">,
+  success: ReturnsResult<O> & AfterTopLevelSuccessEmitArgs<O> & Pick<O, "options">,
   error: NoReturns<O> & AfterTopLevelErrorEmitArgs<O> & Pick<O, "options">,
+  after: ReturnsResult<O> & AfterTopLevelEmitArgs<O> & Pick<O, "options">
   caller: never
 };
 
@@ -249,8 +259,9 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   }>,
   insert: {
     before: ReturnsNamedEmitArg<Pick<InsertCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<InsertCommon<TSchema>>, "doc"> & { options: StandardDefineHookOptions, caller: InsertCommon<TSchema>["caller"] },
-    after: ReturnsResult<InsertCommon<TSchema>> & AfterInternalEmitArgs<InsertCommon<TSchema>> & { options: AfterInsertOptions<TSchema>, caller: InsertCommon<TSchema>["caller"] },
+    success: ReturnsResult<InsertCommon<TSchema>> & AfterInternalSuccessEmitArgs<InsertCommon<TSchema>> & { options: AfterInsertOptions<TSchema>, caller: InsertCommon<TSchema>["caller"] },
     error: NoReturns & AfterInternalErrorEmitArgs<InsertCommon<TSchema>> & { caller: InsertCommon<TSchema>["caller"] },
+    after: ReturnsResult<InsertCommon<TSchema>> & AfterTopLevelEmitArgs<InsertCommon<TSchema>> & { options: StandardDefineHookOptions, caller: InsertCommon<TSchema>["caller"] }
     caller: InsertCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },
@@ -262,8 +273,9 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   }>,
   delete: {
     before: ReturnsNamedEmitArg<Pick<DeleteCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<DeleteCommon<TSchema> & FullDocument>, "filter"> & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
-    after: ReturnsResult<DeleteCommon<TSchema>> & AfterInternalEmitArgs<DeleteCommon<TSchema> & PreviousDocument> & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
+    success: ReturnsResult<DeleteCommon<TSchema>> & AfterInternalSuccessEmitArgs<DeleteCommon<TSchema> & PreviousDocument> & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     error: NoReturns & AfterInternalErrorEmitArgs<DeleteCommon<TSchema>> & { caller: DeleteCommon<TSchema>["caller"] },
+    after: ReturnsResult<DeleteCommon<TSchema>> & AfterInternalEmitArgs<DeleteCommon<TSchema>> & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     caller: DeleteCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },
@@ -289,8 +301,9 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   }>,
   update: {
     before: ReturnsNamedEmitArg<Pick<UpdateCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<UpdateCommon<TSchema> & FullDocument>, "filterMutator"> & { options: BeforeUpdateDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: UpdateCommon<TSchema>["caller"] },
-    after: ReturnsResult<UpdateCommon<TSchema>> & AfterInternalEmitArgs<UpdateCommon<TSchema> & PreviousDocument & FullDocument> & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
+    success: ReturnsResult<UpdateCommon<TSchema>> & AfterInternalSuccessEmitArgs<UpdateCommon<TSchema> & PreviousDocument & FullDocument> & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     error: NoReturns & AfterInternalErrorEmitArgs<Omit<UpdateCommon<TSchema>, "custom"> & Omit<UpdateCommon<TSchema>["custom"], "getDocument">> & { caller: UpdateCommon<TSchema>["caller"] },
+    after: ReturnsResult<UpdateCommon<TSchema>> & AfterInternalEmitArgs<UpdateCommon<TSchema> & UpdateCommon<TSchema>["custom"]> & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     caller: UpdateCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },
@@ -299,10 +312,10 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     thisArg: HookedCollectionInterface<TSchema>,
     result: any[]
   }>,
-  "*": {
-    before: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>
-    after: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>
-    error: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>,
-    caller: AllCommon<TSchema>["caller"]
-  }
+  // "*": {
+  //   before: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>
+  //   success: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>
+  //   error: NoReturns & BeforeInternalEmitArgsNoArgsOrig<AllCommon<TSchema>>,
+  //   caller: AllCommon<TSchema>["caller"]
+  // }
 };

@@ -44,12 +44,14 @@ export type BeforeAfterErrorFindCursorEventDefinitions<TSchema> = BeforeAfterErr
 
 
 type FindCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "before", "before">
-type FindCursorAfterEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "after", "success">
-type FindCursorErrorEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "error", "error">
+type FindCursorAfterSuccessEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "success", "success">
+type FindCursorAfterErrorEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "error", "error">
+type FindCursorAfterEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorFindCursorEventDefinitions<TSchema>, "after", "after">
 
 export type BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema> = FindCursorBeforeEventDefinitions<TSchema>
-  & FindCursorAfterEventDefinitions<TSchema>
-  & FindCursorErrorEventDefinitions<TSchema>;
+  & FindCursorAfterSuccessEventDefinitions<TSchema>
+  & FindCursorAfterErrorEventDefinitions<TSchema>
+  & FindCursorAfterEventDefinitions<TSchema>;
 
 
 type FindCursorCallbackArgsAndReturn<TSchema> = BeforeAfterCallbackArgsAndReturn<BeforeAfterErrorFindCursorFlatEventDefinitions<TSchema>>

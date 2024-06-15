@@ -28,25 +28,29 @@ export async function hooksChain(hookName, chainKey, fn, getHookedCursor, hookRe
     [1, 2, 3],
     {
       [hookName]: [
-        { listener: async ({
-          [chainKey]: value,
-          [`${chainKey}Orig`]: valueOrig
-        }) => {
-          first = performance.now();
-          cachedValueOrig = valueOrig;
-          assert.deepEqual(valueOrig, value, "In the first hook, the value and orig value match");
-          await setTimeout(100);
-          return hookResults[0];
-        }},
-        { listener: ({
-          [chainKey]: value,
-          [`${chainKey}Orig`]: valueOrig
-        }) => {
-          second = performance.now();
-          assert.notDeepEqual(value, valueOrig);
-          assert.deepEqual(cachedValueOrig, valueOrig, "In the second hook");
-          return hookResults[1];
-        } }
+        {
+          listener: async ({
+            [chainKey]: value,
+            [`${chainKey}Orig`]: valueOrig
+          }) => {
+            first = performance.now();
+            cachedValueOrig = valueOrig;
+            assert.deepEqual(valueOrig, value, "In the first hook, the value and orig value match");
+            await setTimeout(100);
+            return hookResults[0];
+          }
+        },
+        {
+          listener: ({
+            [chainKey]: value,
+            [`${chainKey}Orig`]: valueOrig
+          }) => {
+            second = performance.now();
+            assert.notDeepEqual(value, valueOrig);
+            assert.deepEqual(cachedValueOrig, valueOrig, "In the second hook");
+            return hookResults[1];
+          }
+        }
       ]
     }
   );
@@ -67,13 +71,17 @@ export async function hookInParallel(hookName, fn, getHookedCursor) {
     [1, 2, 3],
     {
       [hookName]: [
-        { listener: async () => {
-          first = performance.now();
-          await setTimeout(100);
-        }},
-        { listener: () => {
-          second = performance.now();
-        }}
+        {
+          listener: async () => {
+            first = performance.now();
+            await setTimeout(100);
+          }
+        },
+        {
+          listener: () => {
+            second = performance.now();
+          }
+        }
       ]
     }
   );
@@ -191,7 +199,11 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
     const afterErrorMock = mock.fn(async () => {});
     // @ts-expect-error
     const { hookedCursor } = getHookedCursor(data, {
-      [`after.${cursorType}.cursor.${name}.success`]: [{ listener: () => { throw new Error(name); } }, { listener: afterSuccessMock }],
+      [`after.${cursorType}.cursor.${name}.success`]: [{
+        listener: () => {
+          throw new Error(name);
+        }
+      }, { listener: afterSuccessMock }],
       [`after.${cursorType}.cursor.${name}.error`]: [{ listener: afterErrorMock }]
     });
 
@@ -207,6 +219,25 @@ export function declareSimpleTests(name, args, expected, data, getHookedCursor, 
   });
 
   it("should provide the same invocationSymbol before and after", async () => {
+    let beforeSymbol;
+    let afterSymbol;
+    const beforeMock = mock.fn(async ({ invocationSymbol }) => {
+      beforeSymbol = invocationSymbol;
+    });
+    const afterMock = mock.fn(async ({ invocationSymbol }) => {
+      afterSymbol = invocationSymbol;
+    });
+    // @ts-expect-error
+    const { hookedCursor } = getHookedCursor(data, {
+      [`before.${cursorType}.cursor.${name}`]: [{ listener: beforeMock }],
+      [`after.${cursorType}.cursor.${name}`]: [{ listener: afterMock }]
+    });
+    await hookedCursor[name](...args);
+    assert.ok(beforeSymbol !== undefined, "the before symbol was set");
+    assert.strictEqual(beforeSymbol, afterSymbol, "The symbols should match");
+  });
+
+  it("should provide the same invocationSymbol before and after success", async () => {
     let beforeSymbol;
     let afterSymbol;
     const beforeMock = mock.fn(async ({ invocationSymbol }) => {

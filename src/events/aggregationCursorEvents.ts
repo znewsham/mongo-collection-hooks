@@ -38,13 +38,15 @@ export type BeforeAfterErrorAggregateCursorEventDefinitions<TSchema> = BeforeAft
   & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>;
 
 type AggregationCursorBeforeEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "before", "before">
-type AggregationCursorAfterEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "after", "after", "success">
-type AggregationCursorErrorEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "after", "error", "error">
+type AggregationCursorAfterSuccessEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "after", "success", "success">
+type AggregationCursorAfterErrorEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "after", "error", "error">
+type AggregationCursorAfterEventDefinitions<TSchema> = ExtractEventDefinitions<BeforeAfterErrorAggregateCursorEventDefinitions<TSchema>, "after", "after">
 
 
 type BeforeAfterErrorAggregationCursorEventDefinitions<TSchema> = AggregationCursorBeforeEventDefinitions<TSchema>
-  & AggregationCursorAfterEventDefinitions<TSchema>
-  & AggregationCursorErrorEventDefinitions<TSchema>;
+  & AggregationCursorAfterSuccessEventDefinitions<TSchema>
+  & AggregationCursorAfterErrorEventDefinitions<TSchema>
+  & AggregationCursorAfterEventDefinitions<TSchema>;
 
 
 type AggregationCursorCallbackArgsAndReturn<TSchema> = BeforeAfterCallbackArgsAndReturn<BeforeAfterErrorAggregationCursorEventDefinitions<TSchema>>

@@ -1,5 +1,5 @@
 import { StandardDefineHookOptions } from "../awaiatableEventEmitter.js";
-import { AfterInternalEmitArgs, AfterInternalEmitArgsNoArgs, AfterInternalErrorEmitArgs, AfterInternalErrorEmitArgsNoArgs, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, NoReturns, ReturnsArgs, ReturnsResult } from "./helpersTypes.js";
+import { AfterInternalSuccessEmitArgs, AfterInternalSuccessEmitArgsNoArgs, AfterInternalErrorEmitArgs, AfterInternalErrorEmitArgsNoArgs, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, NoReturns, ReturnsArgs, ReturnsResult, AfterInternalEmitArgsNoArgs } from "./helpersTypes.js";
 
 export type CursorParams<
   HookedCursorType,
@@ -11,8 +11,9 @@ export type CursorParams<
   } & CO
 > = {
   before: NoReturns<CO> & BeforeInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
-  after: NoReturns<CO> & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  success: NoReturns<CO> & AfterInternalSuccessEmitArgsNoArgs<O> & { caller: CO["caller"] }
   error: NoReturns<CO> & AfterInternalErrorEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  after: NoReturns<CO> & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
   caller: CO["caller"]
 };
 
@@ -25,8 +26,9 @@ export type CursorParamsWithResult<
   } & CO)
 > = {
   before: NoReturns & BeforeInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
-  after: ReturnsResult<O> & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  success: ReturnsResult<O> & AfterInternalSuccessEmitArgsNoArgs<O> & { caller: CO["caller"] }
   error: NoReturns & AfterInternalErrorEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  after: ReturnsResult<O> & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
   caller: CO["caller"]
 };
 
@@ -39,8 +41,9 @@ export type CursorParamsWithArgs<
   } & CO
 > = {
   before: ReturnsArgs<O> & BeforeInternalEmitArgsNoArgsOrig<O> & { caller: CO["caller"] }
-  after: NoReturns & AfterInternalEmitArgs<O> & { caller: CO["caller"] },
+  success: NoReturns & AfterInternalSuccessEmitArgs<O> & { caller: CO["caller"] },
   error: NoReturns & AfterInternalErrorEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  after: NoReturns & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
   caller: CO["caller"]
 };
 
@@ -53,7 +56,8 @@ export type CursorParamsWithArgsAndResult<
   } & CO
 > = {
   before: ReturnsArgs<O> & BeforeInternalEmitArgsNoArgsOrig<O> & { caller: CO["caller"] }
-  after: ReturnsResult<O> & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  success: ReturnsResult<O> & AfterInternalSuccessEmitArgsNoArgs<O> & { caller: CO["caller"] }
   error: NoReturns & AfterInternalErrorEmitArgsNoArgs<O> & { caller: CO["caller"] }
+  after: ReturnsResult<O> & AfterInternalEmitArgsNoArgs<O> & { caller: CO["caller"] }
   caller: CO["caller"]
 };
