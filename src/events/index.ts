@@ -126,6 +126,7 @@ const beforeAfterEvents = [
   "count",
   "countDocuments",
   "estimatedDocumentCount",
+  "count*",
   "*",
   ...FindCursorEventsSuffixes,
   ...AggregateCursorEventsSuffixes,

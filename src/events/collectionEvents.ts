@@ -344,5 +344,10 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     thisArg: HookedCollectionInterface<TSchema>,
     result: number
   }>,
+  "count*": TopLevelCall<{
+    args: EstimatedDocumentCountCallArgs | CountDocumentsCallArgs | CountCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: number
+  }>,
 };
 

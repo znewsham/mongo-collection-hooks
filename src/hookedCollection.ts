@@ -309,7 +309,8 @@ export class HookedCollection<
     emitArgs: OEA,
     beforeChainKey: keyof OEA | undefined,
     fn: T,
-    invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined
+    invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined,
+    ...additionalInternalEvents: IE[]
   ): Promise<Awaited<ReturnType<T>>> {
     let {
       args,
@@ -334,7 +335,8 @@ export class HookedCollection<
       true,
       beforeChainKey,
       invocationOptions,
-      internalEvent
+      internalEvent,
+      ...additionalInternalEvents
     )
   }
 
@@ -1154,7 +1156,8 @@ export class HookedCollection<
         },
         "args",
         ({ beforeHooksResult: [options] }) => this.#collection.count(options),
-        options
+        options,
+        InternalEvents["count*"]
       ),
       options
     );
@@ -1174,8 +1177,9 @@ export class HookedCollection<
           args: [options]
         },
         "args",
-        ({ beforeHooksResult: [options] }) => this.#collection.estimatedDocumentCount(options),
-        options
+        ({ beforeHooksResult: [options] }) => this.#collection.estimatedDocumentCount(options as AmendedEstimatedDocumentCountOptions),
+        options,
+        InternalEvents["count*"]
       ),
       options
     );
@@ -1196,7 +1200,8 @@ export class HookedCollection<
         },
         "args",
         ({ beforeHooksResult: [options] }) => this.#collection.countDocuments(options),
-        options
+        options,
+        InternalEvents["count*"]
       ),
       options
     );
