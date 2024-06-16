@@ -10,7 +10,7 @@ export class FakeFindCursor {
   constructor(data = [], filter, options, transform = a => a) {
     this.#data = data;
     this.#filter = filter;
-    this.#options = options;
+    this.#options = options || {};
     this.#transform = transform;
   }
 
@@ -18,8 +18,21 @@ export class FakeFindCursor {
     return this.#id;
   }
 
+  #applyProjection(obj) {
+    // simple only
+    let copy = {};
+    if (!this.#options.projection || Object.entries(this.#options.projection).length === 0) {
+      copy = obj;
+    }
+    Object.entries(this.#options.projection || {}).filter(([, value]) => value === 1).forEach(([key]) => {copy[key] = obj[key];});
+    return copy;
+  }
+
+
   async toArray() {
-    return this.#data.slice(this.#i).map(a => this.#transform(a));
+    return this.#data.slice(this.#i, this.#options?.limit)
+    .map(a => this.#applyProjection(JSON.parse(JSON.stringify(a))))
+    .map(a => this.#transform(a));
   }
 
   async count() {
@@ -27,7 +40,7 @@ export class FakeFindCursor {
   }
 
   async forEach(iterator) {
-    return this.#data.slice(this.#i).forEach(iterator);
+    return (await this.toArray()).forEach(iterator);
   }
 
   async rewind() {
@@ -40,12 +53,16 @@ export class FakeFindCursor {
   }
 
   async next() {
-    return this.#data[this.#i++] || null;
+    if (this.#i === this.#options.limit) {
+      return null;
+    }
+    const next = this.#data[this.#i++];
+    return next ? this.#transform(this.#applyProjection(JSON.parse(JSON.stringify(next)))) : null;
   }
 
   async* [Symbol.asyncIterator]() {
-    for (const item of this.#data.slice(this.#i)) {
-      yield item;
+    for (const item of this.#data.slice(this.#i, this.#options.limit)) {
+      yield this.#transform(this.#applyProjection(JSON.parse(JSON.stringify(item))));
     }
   }
 

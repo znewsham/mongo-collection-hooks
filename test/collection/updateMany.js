@@ -3,6 +3,7 @@ import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 import { assertImplements } from "../helpers.js";
+import { updateTests } from "./update.js";
 
 
 export function defineUpdateMany() {
@@ -78,166 +79,109 @@ export function defineUpdateMany() {
       await hookedCollection.updateMany({}, { $set: { thing: 1 } });
     });
 
-    it("if there are no before/after update hooks, there should be no extraneous DB operations", async () => {
-      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
-      await hookedCollection.updateMany({}, { $set: { a: 1 } });
-      assert.strictEqual(fakeCollection.callCount, 1, "Only one DB operation");
-    });
+    it("should call the hooks with the correct arguments", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeUpdateMock = mock.fn();
+      const beforeUpdateManyMock = mock.fn();
+      const afterUpdateMock = mock.fn();
+      const afterUpdateManyMock = mock.fn();
+      hookedCollection.on("before.update", beforeUpdateMock);
+      hookedCollection.on("after.update.success", afterUpdateMock);
+      hookedCollection.on("before.updateMany", beforeUpdateManyMock);
+      hookedCollection.on("after.updateMany.success", afterUpdateManyMock);
+      await hookedCollection.updateMany({}, { $set: { field: "value" } });
+      assertImplements(beforeUpdateMock.mock.calls, [
+        {
+          arguments: [{
+            args: [{}, { $set: { field: "value" } }, undefined],
+            argsOrig: [{}, { $set: { field: "value" } }, undefined],
+            caller: "updateMany",
+            filterMutator: {
+              filter: {},
+              mutator: { $set: { field: "value" } }
+            },
+            filterMutatorOrig: {
+              filter: {},
+              mutator: { $set: { field: "value" } }
+            },
+            _id: "test",
+            thisArg: hookedCollection
+          }]
+        },
+        {
+          arguments: [{
+            args: [{}, { $set: { field: "value" } }, undefined],
+            argsOrig: [{}, { $set: { field: "value" } }, undefined],
+            caller: "updateMany",
+            filterMutator: {
+              filter: {},
+              mutator: { $set: { field: "value" } }
+            },
+            filterMutatorOrig: {
+              filter: {},
+              mutator: { $set: { field: "value" } }
+            },
+            _id: "test2",
+            thisArg: hookedCollection
+          }]
+        }
+      ], "called the beforeUpdate hook correctly");
+      assertImplements(beforeUpdateManyMock.mock.calls[0].arguments, [{
+        args: [{}, { $set: { field: "value" } }, undefined],
+        argsOrig: [{}, { $set: { field: "value" } }, undefined],
+        thisArg: hookedCollection
+      }], "called the beforeUpdateMany hook correctly");
+      assertImplements(afterUpdateManyMock.mock.calls[0].arguments, [{
+        args: [{}, { $set: { field: "value" } }, undefined],
+        argsOrig: [{}, { $set: { field: "value" } }, undefined],
+        result: {
+          acknowledged: true, matchedCount: 2, modifiedCount: 2, upsertedCount: 0, upsertedId: null
+        },
+        resultOrig: {
+          acknowledged: true, matchedCount: 2, modifiedCount: 2, upsertedCount: 0, upsertedId: null
+        },
+        thisArg: hookedCollection
+      }], "called the afterUpdateManyMock hook correctly");
 
-    it("if there are before/after update hooks, there should be a single extraneous DB operations", async () => {
-      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
-      hookedCollection.on("before.update", () => {});
-      hookedCollection.on("before.update", () => {});
-      hookedCollection.on("after.update", () => {});
-      hookedCollection.on("after.update", () => {});
-      await hookedCollection.updateMany({}, { $set: { a: 1 } });
-      assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
+      assertImplements(afterUpdateMock.mock.calls, [
+        {
+          arguments: [{
+            args: [{}, { $set: { field: "value" } }, undefined],
+            argsOrig: [{}, { $set: { field: "value" } }, undefined],
+            filterMutator: {
+              filter: {},
+              mutator: { $set: { field: "value" } }
+            },
+            _id: "test",
+            result: {
+              acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+            },
+            resultOrig: {
+              acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+            },
+            thisArg: hookedCollection
+          }]
+        },
+        {
+          arguments: [{
+            args: [{}, { $set: { field: "value" } }, undefined],
+            argsOrig: [{}, { $set: { field: "value" } }, undefined],
+            filterMutator: {
+              filter: {},
+              mutator: { $set: { field: "value" } }
+            },
+            _id: "test2",
+            result: {
+              acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+            },
+            resultOrig: {
+              acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+            },
+            thisArg: hookedCollection
+          }]
+        }
+      ], "called the afterUpdate hook correctly");
     });
-
-    it("if before hooks access the document, there should be a single extraneous DB operation per document", async () => {
-      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
-      hookedCollection.on("before.update", async ({ getDocument }) => {
-        await getDocument();
-      });
-      hookedCollection.on("before.update", async ({ getDocument }) => {
-        await getDocument();
-      });
-      await hookedCollection.updateMany({}, { $set: { a: 1 } });
-      assert.strictEqual(fakeCollection.callCount, 3, "Only three DB operation");
-    });
-
-    it("if any before hook running specifies greedyFetch, there should NOT be a single extraneous DB operation per document", async () => {
-      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
-      hookedCollection.on("before.update", async ({ getDocument }) => {
-        await getDocument();
-      }, { greedyFetch: true });
-      hookedCollection.on("before.update", async ({ getDocument }) => {
-        await getDocument();
-      });
-      await hookedCollection.updateMany({}, { $set: { a: 1 } });
-      assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
-    });
-  });
-
-  it("should call the hooks with the correct arguments", async () => {
-    const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
-    const beforeUpdateMock = mock.fn();
-    const beforeUpdateManyMock = mock.fn();
-    const afterUpdateMock = mock.fn();
-    const afterUpdateManyMock = mock.fn();
-    hookedCollection.on("before.update", beforeUpdateMock);
-    hookedCollection.on("after.update.success", afterUpdateMock);
-    hookedCollection.on("before.updateMany", beforeUpdateManyMock);
-    hookedCollection.on("after.updateMany.success", afterUpdateManyMock);
-    await hookedCollection.updateMany({}, { $set: { field: "value" } });
-    assertImplements(beforeUpdateMock.mock.calls, [
-      {
-        arguments: [{
-          args: [{}, { $set: { field: "value" } }, undefined],
-          argsOrig: [{}, { $set: { field: "value" } }, undefined],
-          caller: "updateMany",
-          filterMutator: {
-            filter: {},
-            mutator: { $set: { field: "value" } }
-          },
-          filterMutatorOrig: {
-            filter: {},
-            mutator: { $set: { field: "value" } }
-          },
-          _id: "test",
-          thisArg: hookedCollection
-        }]
-      },
-      {
-        arguments: [{
-          args: [{}, { $set: { field: "value" } }, undefined],
-          argsOrig: [{}, { $set: { field: "value" } }, undefined],
-          caller: "updateMany",
-          filterMutator: {
-            filter: {},
-            mutator: { $set: { field: "value" } }
-          },
-          filterMutatorOrig: {
-            filter: {},
-            mutator: { $set: { field: "value" } }
-          },
-          _id: "test2",
-          thisArg: hookedCollection
-        }]
-      }
-    ], "called the beforeUpdate hook correctly");
-    assertImplements(beforeUpdateManyMock.mock.calls[0].arguments, [{
-      args: [{}, { $set: { field: "value" } }, undefined],
-      argsOrig: [{}, { $set: { field: "value" } }, undefined],
-      thisArg: hookedCollection
-    }], "called the beforeUpdateMany hook correctly");
-    assertImplements(afterUpdateManyMock.mock.calls[0].arguments, [{
-      args: [{}, { $set: { field: "value" } }, undefined],
-      argsOrig: [{}, { $set: { field: "value" } }, undefined],
-      result: {
-        acknowledged: true, matchedCount: 2, modifiedCount: 2, upsertedCount: 0, upsertedId: null
-      },
-      resultOrig: {
-        acknowledged: true, matchedCount: 2, modifiedCount: 2, upsertedCount: 0, upsertedId: null
-      },
-      thisArg: hookedCollection
-    }], "called the afterUpdateManyMock hook correctly");
-
-    assertImplements(afterUpdateMock.mock.calls, [
-      {
-        arguments: [{
-          args: [{}, { $set: { field: "value" } }, undefined],
-          argsOrig: [{}, { $set: { field: "value" } }, undefined],
-          filterMutator: {
-            filter: {},
-            mutator: { $set: { field: "value" } }
-          },
-          _id: "test",
-          result: {
-            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-          },
-          resultOrig: {
-            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-          },
-          thisArg: hookedCollection
-        }]
-      },
-      {
-        arguments: [{
-          args: [{}, { $set: { field: "value" } }, undefined],
-          argsOrig: [{}, { $set: { field: "value" } }, undefined],
-          filterMutator: {
-            filter: {},
-            mutator: { $set: { field: "value" } }
-          },
-          _id: "test2",
-          result: {
-            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-          },
-          resultOrig: {
-            acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-          },
-          thisArg: hookedCollection
-        }]
-      }
-    ], "called the afterUpdate hook correctly");
-  });
-
-  it("Should skip documents correctly", async () => {
-    const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
-    let first = true;
-    hookedCollection.on("before.update", () => {
-      if (first) {
-        first = false;
-        return SkipDocument;
-      }
-    });
-    const afterUpdateMock = mock.fn();
-    hookedCollection.on("after.update.success", afterUpdateMock);
-    const result = await hookedCollection.updateMany({}, { $set: { a: 1 } });
-    assert.deepEqual(result, {
-      acknowledged: true, matchedCount: 2, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-    });
-    assert.strictEqual(afterUpdateMock.mock.callCount(), 1, "Should have only called after.insert for one doc");
+    updateTests("updateMany");
   });
 }

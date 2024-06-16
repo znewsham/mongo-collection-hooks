@@ -156,7 +156,7 @@ type FullDocument = {
 
 type PreviousDocument = {
   /** A copy of the document from before the update was made */
-  previousDocument: Document
+  previousDocument?: Document | undefined | null
 }
 
 type UpdateCommon<TSchema extends Document> = {
@@ -289,10 +289,32 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     options: StandardDefineHookOptions,
   }>,
   delete: {
-    before: ReturnsNamedEmitArg<Pick<DeleteCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<DeleteCommon<TSchema> & FullDocument>, "filter"> & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
-    success: ReturnsResult<DeleteCommon<TSchema>> & AfterInternalSuccessEmitArgs<DeleteCommon<TSchema> & PreviousDocument> & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
-    error: NoReturns & AfterInternalErrorEmitArgs<DeleteCommon<TSchema>> & { caller: DeleteCommon<TSchema>["caller"] },
-    after: ReturnsResult<DeleteCommon<TSchema>> & AfterInternalEmitArgs<DeleteCommon<TSchema>> & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
+    before: ReturnsNamedEmitArg<
+      Pick<DeleteCommon<TSchema>, "beforeHookReturns">
+      & BeforeInternalEmitArgs<
+        DeleteCommon<TSchema>
+        & { custom: DeleteCommon<TSchema>["custom"] & FullDocument }
+      >, "filter">
+      & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
+    success: ReturnsResult<DeleteCommon<TSchema>>
+      & AfterInternalSuccessEmitArgs<
+        DeleteCommon<TSchema>
+        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
+      >
+      & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
+    error: NoReturns
+      & AfterInternalErrorEmitArgs<
+        DeleteCommon<TSchema>
+        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
+        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
+      >
+      & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
+    after: ReturnsResult<DeleteCommon<TSchema>>
+      & AfterInternalEmitArgs<
+        DeleteCommon<TSchema>
+        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
+      >
+      & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     caller: DeleteCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },
@@ -318,9 +340,24 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   }>,
   update: {
     before: ReturnsNamedEmitArg<Pick<UpdateCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<UpdateCommon<TSchema> & FullDocument>, "filterMutator"> & { options: BeforeUpdateDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: UpdateCommon<TSchema>["caller"] },
-    success: ReturnsResult<UpdateCommon<TSchema>> & AfterInternalSuccessEmitArgs<UpdateCommon<TSchema> & PreviousDocument & FullDocument> & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
-    error: NoReturns & AfterInternalErrorEmitArgs<Omit<UpdateCommon<TSchema>, "custom"> & Omit<UpdateCommon<TSchema>["custom"], "getDocument">> & { caller: UpdateCommon<TSchema>["caller"] },
-    after: ReturnsResult<UpdateCommon<TSchema>> & AfterInternalEmitArgs<UpdateCommon<TSchema> & UpdateCommon<TSchema>["custom"]> & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
+    success: ReturnsResult<UpdateCommon<TSchema>>
+      & AfterInternalSuccessEmitArgs<
+        UpdateCommon<TSchema>
+        & { custom: UpdateCommon<TSchema>["custom"] & PreviousDocument }
+      >
+      & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
+    error: NoReturns
+      & AfterInternalErrorEmitArgs<
+        UpdateCommon<TSchema>
+        & { custom: UpdateCommon<TSchema>["custom"] & PreviousDocument }
+      >
+      & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
+    after: ReturnsResult<UpdateCommon<TSchema>>
+      & AfterInternalEmitArgs<
+        UpdateCommon<TSchema>
+        & { custom: UpdateCommon<TSchema>["custom"] & PreviousDocument }
+      >
+      & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     caller: UpdateCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },

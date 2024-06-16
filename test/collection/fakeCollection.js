@@ -41,7 +41,8 @@ export class FakeCollection {
 
   findOne(filter) {
     this.#callCount++;
-    return this.#data.find(safeCompile(filter));
+    const item = this.#data.find(safeCompile(filter));
+    return item ? JSON.parse(JSON.stringify(item)) : null;
   }
 
   distinct(key, filter) {
@@ -139,7 +140,7 @@ export class FakeCollection {
     docs.forEach((doc) => {
       const before = JSON.stringify(doc);
       if (doc) {
-        LocalCollection._modify(doc, $modifier);
+        LocalCollection._modify(JSON.parse(JSON.stringify(doc)), $modifier);
       }
       const after = JSON.stringify(doc);
       if (before !== after) {

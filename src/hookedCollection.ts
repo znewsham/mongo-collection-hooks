@@ -83,6 +83,8 @@ class DocumentCache<TSchema extends Document> {
       if (this.#dontLoadDocuments) {
         return Promise.resolve(null);
       }
+
+      // INTENTIONALLY *NOT* await
       // @ts-expect-error
       this.#map.set(id, this.#collection.findOne({ _id: id }, { projection: this.#projection}));
     }
@@ -581,14 +583,21 @@ export class HookedCollection<
     const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
     const beforeListeners = beforeListenersWithOptions.map(({ listener }) => listener);
     const afterListeners = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ listener }) => listener);
-    const beforeProjection = unionOfProjections(beforeProjections);
+    const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ options }) => options?.fetchPrevious);
+    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const isCacheWarmed = isBeforeGreedy || fetchPrevious;
+
+    const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
       return noListenersFn();
+    }
+    if (Object.hasOwn(beforeProjection, "_id") && !beforeProjection._id) {
+      delete beforeProjection["_id"];
     }
     const cursor = this.#collection.find<{ _id: any }>(
       beforeEmitArgs.args[0],
       {
-        projection: { _id: 1, ...(isBeforeGreedy ? beforeProjection : {}) },
+        projection: isCacheWarmed ? beforeProjection : { _id: 1 },
         limit
       }
     );
@@ -636,6 +645,7 @@ export class HookedCollection<
           {
             ...beforeEmitArgs,
             invocationSymbol,
+            previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
             _id,
             thisArg: this,
             result: partialResult,
@@ -659,6 +669,7 @@ export class HookedCollection<
           {
             ...beforeEmitArgs,
             invocationSymbol,
+            previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
             thisArg: this,
             _id,
             error: e,
@@ -700,18 +711,26 @@ export class HookedCollection<
     });
     const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
     const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+
     const beforeListeners = beforeListenersWithOptions.map(({ listener }) => listener);
     const afterProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
     const afterListeners = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ listener }) => listener);
+    const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ options }) => options?.fetchPrevious);
+    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
 
-    const beforeProjection = unionOfProjections(beforeProjections);
+
+    const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
       return noListenersFn();
     }
+    if (Object.hasOwn(beforeProjection, "_id") && !beforeProjection._id) {
+      delete beforeProjection["_id"];
+    }
+    const isCacheWarmed = isBeforeGreedy || fetchPrevious;
     const cursor = this.#collection.find<{ _id: any }>(
       beforeEmitArgs.args[0],
       {
-        projection: { _id: 1, ...(isBeforeGreedy ? beforeProjection : {}) },
+        projection: isCacheWarmed ? beforeProjection : { _id: 1 },
         limit
       }
     );
@@ -753,12 +772,12 @@ export class HookedCollection<
       }
       return result;
     }
-    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy);
+    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed);
     const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false);
     const invocationSymbol = Symbol("update");
     const promises: any[] = [];
     do {
-      if (isBeforeGreedy) {
+      if (isCacheWarmed) {
         beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
       }
       promises.push((async ({ _id }) => {
@@ -783,6 +802,7 @@ export class HookedCollection<
               Events.afterSuccess.update,
               {
                 ...beforeEmitArgs,
+                previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
                 invocationSymbol,
                 _id,
                 getDocument: () => afterDocumentCache.getDocument(_id),
@@ -816,6 +836,8 @@ export class HookedCollection<
               ...beforeEmitArgs,
               invocationSymbol,
               _id,
+              getDocument: () => afterDocumentCache.getDocument(_id),
+              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
               thisArg: this,
               error: e,
             },
