@@ -20,12 +20,16 @@ import type {
   ReplaceOptions,
   CountOptions,
   EstimatedDocumentCountOptions,
-  CountDocumentsOptions
+  CountDocumentsOptions,
+  FindOneAndDeleteOptions,
+  ModifyResult,
+  FindOneAndReplaceOptions,
+  FindOneAndUpdateOptions
 } from "mongodb"
 
 import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
 import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
-import { Args, ArgsOrig, ErrorT, InvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
+import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 import { HookedCollectionInterface } from "./hookedCollectionInterface.js";
@@ -120,50 +124,11 @@ type AfterTopLevelEmitArgs<O extends CommonDefinition> = {
     & ResultOrError<O>
 };
 
-type InsertCommon<TSchema extends Document> = {
-  caller: "insertOne" | "insertMany" | "updateOne" | "updateMany" | "replaceOne",
-  args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema> | UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
-  beforeHookReturns: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument
-  thisArg: HookedCollectionInterface<TSchema>,
-  result: InsertOneResult<TSchema> | UpdateResult | Document,
-  custom: {
-    /** The document to be inserted */
-    doc: OptionalUnlessRequiredId<TSchema>
-  },
-  isPromise: true
-}
-
-type DeleteCommon<TSchema extends Document> = {
-  caller: "deleteOne" | "deleteMany",
-  args: DeleteCallArgs<TSchema>,
-  thisArg: HookedCollectionInterface<TSchema>,
-  result: DeleteResult,
-  beforeHookReturns: Filter<TSchema> | typeof SkipDocument,
-  custom: {
-    /** The ID of the document to be deleted */
-    _id: InferIdType<TSchema>,
-    /** The filter used to identify the document. Originally this will the main filter, but you can return a mutated version per document. It will be combined with the document ID for the final deletion */
-    filter: Filter<TSchema>
-  },
-  isPromise: true
-}
-
-
-type FullDocument = {
-  /** Returns a document the projection of which is the union of all hooks' projections. This function will result in at most one database operation per document, regardless of how many times it's called across all hooks. */
-  getDocument(): Promise<Document | null>,
-}
-
-type PreviousDocument = {
-  /** A copy of the document from before the update was made */
-  previousDocument?: Document | undefined | null
-}
-
 type UpdateCommon<TSchema extends Document> = {
-  caller: "updateOne" | "updateMany" | "replaceOne",
-  args: UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
+  caller: "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace",
+  args: UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema> | FindOneAndUpdateCallArgs<TSchema> | FindOneAndReplaceCallArgs<TSchema>,
   thisArg: HookedCollectionInterface<TSchema>,
-  result: UpdateResult | Document,
+  result: UpdateResult<TSchema> | ModifyResult<TSchema> | Document | null,
   beforeHookReturns: UpdateCommon<TSchema>["custom"]["filterMutator"] | typeof SkipDocument,
   custom: {
     /** The ID of the document being updated */
@@ -180,6 +145,120 @@ type UpdateCommon<TSchema extends Document> = {
   isPromise: true,
 }
 
+type UpdateCommonEmitArgs<TSchema extends Document> = {
+  emitArgs: UpdateCommon<TSchema>["custom"]
+    & Caller<UpdateCommon<TSchema>>
+    & ThisArg<UpdateCommon<TSchema>>
+    & Args<UpdateCommon<TSchema>>
+    & ArgsOrig<UpdateCommon<TSchema>>
+    & InvocationSymbol
+    & ParentInvocationSymbol
+    & PreviousDocument
+    & FullDocument
+};
+
+type UpdateCommonResultEmitArgs<TSchema extends Document> = {
+  emitArgs: Omit<UpdateCommonEmitArgs<TSchema>["emitArgs"], "caller">
+    & (
+      { caller: "findOneAndUpdate" | "findOneAndReplace", result: WithId<TSchema> | ModifyResult<TSchema> | null }
+      | { caller: "updateOne" | "updateMany", result: UpdateResult<TSchema> }
+      | { caller: "replaceOne", result: UpdateResult<TSchema> | Document }
+    )
+}
+
+type UpdateCommonErrorEmitArgs<TSchema extends Document> = {
+  emitArgs: UpdateCommonEmitArgs<TSchema>["emitArgs"]
+    & ErrorT
+};
+
+type UpdateCommonErrorOrResultEmitArgs<TSchema extends Document> = {
+  emitArgs: Omit<UpdateCommonEmitArgs<TSchema>["emitArgs"], "caller">
+    & {
+      /** The error caused by the action. Mutually exclusive with result */
+      error?: any
+    }
+    & (
+      { caller: "findOneAndUpdate" | "findOneAndReplace", result?: WithId<TSchema> | ModifyResult<TSchema> | null }
+      | { caller: "updateOne" | "updateMany", result?: UpdateResult<TSchema> }
+      | { caller: "replaceOne", result: UpdateResult<TSchema> | Document }
+    )
+}
+
+type InsertCommon<TSchema extends Document> = {
+  caller: "insertOne" | "insertMany" | "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace",
+  args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema> | UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
+  beforeHookReturns: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument
+  thisArg: HookedCollectionInterface<TSchema>,
+  result: InsertOneResult<TSchema> | UpdateResult | Document,
+  custom: {
+    /** The document to be inserted */
+    doc: OptionalUnlessRequiredId<TSchema>
+  },
+  isPromise: true
+}
+
+type DeleteCommon<TSchema extends Document> = {
+  caller: "deleteOne" | "deleteMany" | "findOneAndDelete",
+  args: DeleteCallArgs<TSchema> | FindOneAndDeleteCallArgs<TSchema>,
+  thisArg: HookedCollectionInterface<TSchema>,
+  result: DeleteResult | WithId<TSchema> | ModifyResult<TSchema> | null,
+  beforeHookReturns: Filter<TSchema> | typeof SkipDocument,
+  custom: {
+    /** The ID of the document to be deleted */
+    _id: InferIdType<TSchema>,
+    /** The filter used to identify the document. Originally this will the main filter, but you can return a mutated version per document. It will be combined with the document ID for the final deletion */
+    filter: Filter<TSchema>
+  },
+  isPromise: true
+}
+
+type DeleteCommonEmitArgs<TSchema extends Document> = {
+  emitArgs: DeleteCommon<TSchema>["custom"]
+    & Caller<DeleteCommon<TSchema>>
+    & ThisArg<DeleteCommon<TSchema>>
+    & Args<DeleteCommon<TSchema>>
+    & ArgsOrig<DeleteCommon<TSchema>>
+    & InvocationSymbol
+    & ParentInvocationSymbol
+    & PreviousDocument
+};
+
+type DeleteCommonResultEmitArgs<TSchema extends Document> = {
+  emitArgs: Omit<DeleteCommonEmitArgs<TSchema>["emitArgs"], "caller">
+    & (
+      { caller: "findOneAndDelete", result: WithId<TSchema> | ModifyResult<TSchema> | null }
+      | { caller: "deleteOne" | "deleteMany", result: DeleteResult }
+    )
+}
+
+type DeleteCommonErrorEmitArgs<TSchema extends Document> = {
+  emitArgs: DeleteCommonEmitArgs<TSchema>["emitArgs"]
+    & ErrorT
+};
+
+type DeleteCommonErrorOrResultEmitArgs<TSchema extends Document> = {
+  emitArgs: Omit<DeleteCommonEmitArgs<TSchema>["emitArgs"], "caller">
+    & {
+      /** The error caused by the action. Mutually exclusive with result */
+      error?: any
+    }
+    & (
+      { caller: "findOneAndDelete", result?: WithId<TSchema> | ModifyResult<TSchema> | null }
+      | { caller: "deleteOne" | "deleteMany", result?: DeleteResult }
+    )
+}
+
+
+type FullDocument = {
+  /** Returns a document the projection of which is the union of all hooks' projections. This function will result in at most one database operation per document, regardless of how many times it's called across all hooks. */
+  getDocument(): Promise<Document | null>,
+}
+
+type PreviousDocument = {
+  /** A copy of the document from before the update was made */
+  previousDocument?: Document | undefined | null
+}
+
 type CollectionBeforeEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "before", "before">
 type CollectionAfterSuccessEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "success", "success">
 type CollectionAfterErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
@@ -194,15 +273,6 @@ type AllCollectionEventDefinitions<TSchema extends Document> = CollectionBeforeE
 type CollectionCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<AllCollectionEventDefinitions<TSchema>>
 
 
-// const t: CollectionCallbackArgsAndReturn<Document>["before.find"] = {
-//   callbackArgs,
-//   caller,
-//   emitArgs,
-//   isPromise,
-//   options,
-//   returnEmitName,
-//   returns
-// }
 /**
  * @external
  */
@@ -224,6 +294,9 @@ export type AmendedFindOptions<TSchema extends Document, caller extends "before.
 export type AmendedEstimatedDocumentCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "estimatedDocumentCount"> & EstimatedDocumentCountOptions;
 export type AmendedCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "count"> & CountOptions;
 export type AmendedCountDocumentsOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "countDocuments"> & CountDocumentsOptions;
+export type AmendedFindOneAndDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndDelete"> & FindOneAndDeleteOptions;
+export type AmendedFindOneAndUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndUpdate"> & FindOneAndUpdateOptions;
+export type AmendedFindOneAndReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndReplace"> & FindOneAndReplaceOptions;
 
 type InsertOneCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>, AmendedInsertOneOptions | undefined];
 type InsertManyCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>[], AmendedBulkWriteOptions | undefined];
@@ -235,8 +308,19 @@ type DeleteCallArgs<TSchema> = readonly [Filter<TSchema>, AmendedDeleteOptions |
 type DistinctCallArgs<TSchema> = readonly [keyof WithId<TSchema>, Filter<TSchema>, AmendedDistinctOptions];
 type CountCallArgs<TSchema> = readonly [Filter<TSchema> | undefined, CountOptions | undefined];
 type EstimatedDocumentCountCallArgs = readonly [AmendedEstimatedDocumentCountOptions | undefined];
-type CountDocumentsCallArgs = readonly [Filter<Document> | undefined, CountDocumentsOptions | undefined];
+type CountDocumentsCallArgs = readonly [Filter<Document> | undefined, AmendedCountDocumentsOptions | undefined];
+export type FindOneAndDeleteCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, AmendedFindOneAndDeleteOptions | undefined];
+export type FindOneAndUpdateCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, UpdateFilter<TSchema>, AmendedFindOneAndUpdateOptions | undefined];
+export type FindOneAndReplaceCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, WithoutId<TSchema>, AmendedFindOneAndReplaceOptions | undefined];
 
+export type UpsertCallArgs<TSchema extends Document, Caller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndUpdate" | "findOneAndReplace"> = Caller extends "updateOne" | "updateMany"
+  ? UpdateCallArgs<TSchema>
+  : Caller extends "replaceOne"
+    ? | ReplaceCallArgs<TSchema>
+    : Caller extends "findOneAndUpdate"
+      ? FindOneAndUpdateCallArgs<TSchema>
+      : never
+;
 
 type TopLevelCall<O extends CommonDefinition & { result: any }> = {
   before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & Pick<O, "options">,
@@ -256,7 +340,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   findOne: TopLevelCall<{
     args: FindCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
-    result: TSchema
+    result: TSchema | null
   }>,
   find: TopLevelCall<{
     args: FindCallArgs<TSchema>,
@@ -291,29 +375,18 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   delete: {
     before: ReturnsNamedEmitArg<
       Pick<DeleteCommon<TSchema>, "beforeHookReturns">
-      & BeforeInternalEmitArgs<
-        DeleteCommon<TSchema>
-        & { custom: DeleteCommon<TSchema>["custom"] & FullDocument }
-      >, "filter">
-      & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
+      & DeleteCommonEmitArgs<TSchema>,
+      "filter"
+    >
+    & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },
     success: ReturnsResult<DeleteCommon<TSchema>>
-      & AfterInternalSuccessEmitArgs<
-        DeleteCommon<TSchema>
-        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
-      >
+      & DeleteCommonResultEmitArgs<TSchema>
       & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     error: NoReturns
-      & AfterInternalErrorEmitArgs<
-        DeleteCommon<TSchema>
-        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
-        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
-      >
+      & DeleteCommonErrorEmitArgs<TSchema>
       & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     after: ReturnsResult<DeleteCommon<TSchema>>
-      & AfterInternalEmitArgs<
-        DeleteCommon<TSchema>
-        & { custom: DeleteCommon<TSchema>["custom"] & PreviousDocument }
-      >
+      & DeleteCommonErrorOrResultEmitArgs<TSchema>
       & { options: AfterDeleteDefineHookOptions<TSchema>, caller: DeleteCommon<TSchema>["caller"] },
     caller: DeleteCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
@@ -341,22 +414,13 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   update: {
     before: ReturnsNamedEmitArg<Pick<UpdateCommon<TSchema>, "beforeHookReturns"> & BeforeInternalEmitArgs<UpdateCommon<TSchema> & FullDocument>, "filterMutator"> & { options: BeforeUpdateDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: UpdateCommon<TSchema>["caller"] },
     success: ReturnsResult<UpdateCommon<TSchema>>
-      & AfterInternalSuccessEmitArgs<
-        UpdateCommon<TSchema>
-        & { custom: UpdateCommon<TSchema>["custom"] & PreviousDocument }
-      >
+      & UpdateCommonResultEmitArgs<TSchema>
       & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     error: NoReturns
-      & AfterInternalErrorEmitArgs<
-        UpdateCommon<TSchema>
-        & { custom: UpdateCommon<TSchema>["custom"] & PreviousDocument }
-      >
+      & UpdateCommonErrorEmitArgs<TSchema>
       & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     after: ReturnsResult<UpdateCommon<TSchema>>
-      & AfterInternalEmitArgs<
-        UpdateCommon<TSchema>
-        & { custom: UpdateCommon<TSchema>["custom"] & PreviousDocument }
-      >
+      & UpdateCommonErrorOrResultEmitArgs<TSchema>
       & { options: AfterUpdateDefineHookOptions<TSchema>, caller: UpdateCommon<TSchema>["caller"] },
     caller: UpdateCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
@@ -386,5 +450,24 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     thisArg: HookedCollectionInterface<TSchema>,
     result: number
   }>,
+  "findOne*": TopLevelCall<{
+    args: FindCallArgs<TSchema> | FindOneAndDeleteCallArgs<TSchema> | FindOneAndUpdateCallArgs<TSchema> | FindOneAndReplaceCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: WithId<TSchema> | ModifyResult<TSchema> | null
+  }>,
+  findOneAndDelete: TopLevelCall<{
+    args: FindOneAndDeleteCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: WithId<TSchema> | ModifyResult<TSchema> | null
+  }>,
+  findOneAndUpdate: TopLevelCall<{
+    args: FindOneAndUpdateCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: ModifyResult<TSchema> | WithId<TSchema> | null
+  }>,
+  findOneAndReplace: TopLevelCall<{
+    args: FindOneAndReplaceCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: ModifyResult<TSchema> | WithId<TSchema> | null
+  }>
 };
-
