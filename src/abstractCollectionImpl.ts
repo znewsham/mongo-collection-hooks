@@ -35,9 +35,6 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
   bulkWrite(operations: AnyBulkWriteOperation<TSchema>[], options?: BulkWriteOptions | undefined): Promise<BulkWriteResult> {
     return this.#collection.bulkWrite(operations, options);
   }
-  countDocuments(filter?: Document | undefined, options?: CountDocumentsOptions | undefined): Promise<number> {
-    return this.#collection.countDocuments(filter, options);
-  }
   createIndex(indexSpec: IndexSpecification, options?: CreateIndexesOptions | undefined): Promise<string> {
     return this.#collection.createIndex(indexSpec, options);
   }
@@ -61,40 +58,6 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
   }
   dropSearchIndex(name: string): Promise<void> {
     return this.#collection.dropSearchIndex(name);
-  }
-  estimatedDocumentCount(options?: EstimatedDocumentCountOptions | undefined): Promise<number> {
-    return this.#collection.estimatedDocumentCount(options);
-  }
-  async findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
-  async findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
-  async findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions): Promise<ModifyResult<TSchema>>;
-  async findOneAndDelete(filter: Filter<TSchema>): Promise<ModifyResult<TSchema>>;
-  async findOneAndDelete(filter: Filter<TSchema>, options?: FindOneAndDeleteOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
-    if (options) {
-      return this.#collection.findOneAndDelete(filter, options);
-    }
-    return this.#collection.findOneAndDelete(filter);
-  }
-  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
-  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
-  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions): Promise<WithId<TSchema> | null>;
-  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>): Promise<ModifyResult<TSchema>>;
-  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: FindOneAndUpdateOptions): Promise<ModifyResult<TSchema> | WithId<TSchema> | null> {
-    if (options) {
-      return this.#collection.findOneAndUpdate(filter, update, options);
-    }
-    return this.#collection.findOneAndUpdate(filter, update);
-  }
-
-  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
-  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
-  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions): Promise<ModifyResult<TSchema>>;
-  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>): Promise<ModifyResult<TSchema>>;
-  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: FindOneAndReplaceOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
-    if (options) {
-      return this.#collection.findOneAndReplace(filter, replacement, options);
-    }
-    return this.#collection.findOneAndReplace(filter, replacement);
   }
   indexExists(indexes: string | string[], options?: IndexInformationOptions | undefined): Promise<boolean> {
     return this.#collection.indexExists(indexes, options);
@@ -131,16 +94,6 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
   isCapped(options?: OperationOptions | undefined): Promise<boolean> {
     return this.#collection.isCapped(options);
   }
-
-  aggregate<T extends Document = Document>(pipeline?: Document[] | undefined, options?: AggregateOptions | undefined): AggregationCursor<T> {
-    return this.#collection.aggregate(pipeline, options);
-  }
-  deleteMany(filter?: Filter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult> {
-    return this.#collection.deleteMany(filter, options);
-  }
-  deleteOne(filter?: Filter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult> {
-    return this.#collection.deleteOne(filter, options);
-  }
   updateSearchIndex(name: string, definition: Document): Promise<void> {
     return this.#collection.updateSearchIndex(name, definition);
   }
@@ -151,10 +104,20 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
     return this.#collection.stats(options);
   }
 
+  abstract aggregate<T extends Document = Document>(pipeline?: Document[] | undefined, options?: AggregateOptions | undefined): AggregationCursor<T>;
+  abstract count(filter?: Filter<TSchema> | undefined, options?: CountOptions | undefined): Promise<number>;
+
+  abstract countDocuments(filter?: Document | undefined, options?: CountDocumentsOptions | undefined): Promise<number>;
+
+  abstract deleteMany(filter?: Filter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult>;
+  abstract deleteOne(filter?: Filter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult>;
+
   abstract distinct(key: string): Promise<any[]>;
   abstract distinct(key: string, filter: Filter<TSchema>): Promise<any[]>;
   abstract distinct(key: string, filter: Filter<TSchema>, options: DistinctOptions): Promise<any[]>;
   abstract distinct<Key extends keyof WithId<TSchema>>(key: Key, filter: Filter<TSchema>, options: DistinctOptions): Promise<any[]>;
+
+  abstract estimatedDocumentCount(options?: EstimatedDocumentCountOptions | undefined): Promise<number>;
 
   abstract find(): FindCursor<WithId<TSchema>>;
   abstract find(filter: Filter<TSchema>, options?: FindOptions<Document> | undefined): FindCursor<WithId<TSchema>>;
@@ -169,10 +132,28 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
   abstract findOne<T = TSchema>(filter: Filter<TSchema>, options?: FindOptions<Document> | undefined): Promise<T | null>;
   abstract findOne(filter: Filter<TSchema>, options: FindOptions): Promise<WithId<TSchema> | null>;
 
+  abstract findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  abstract findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndDelete(filter: Filter<TSchema>): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndDelete(filter: Filter<TSchema>, options?: FindOneAndDeleteOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null>;
+
+  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
+  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions): Promise<WithId<TSchema> | null>;
+  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: FindOneAndUpdateOptions): Promise<ModifyResult<TSchema> | WithId<TSchema> | null>;
+
+  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: FindOneAndReplaceOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null>;
+
   abstract insertMany(docs: OptionalUnlessRequiredId<TSchema>[], options?: BulkWriteOptions | undefined): Promise<InsertManyResult<TSchema>>;
   abstract insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: InsertOneOptions | undefined): Promise<InsertOneResult<TSchema>>;
   abstract replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: ReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>>;
   abstract updateMany(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>>;
   abstract updateOne(filter: Filter<TSchema>, update: UpdateFilter<TSchema> | Partial<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>>;
-  abstract count(filter?: Filter<TSchema> | undefined, options?: CountOptions | undefined): Promise<number>;
+
 }

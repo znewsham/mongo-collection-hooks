@@ -17,6 +17,9 @@ import type {
   InsertOneResult,
   EstimatedDocumentCountOptions,
   CountDocumentsOptions,
+  FindOneAndDeleteOptions,
+  ModifyResult,
+  FindOneAndUpdateOptions,
 } from 'mongodb';
 import { HookedFindCursor } from "./hookedFindCursor.js";
 
@@ -52,14 +55,36 @@ import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from './utils.js';
-import { ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
-import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, CollectionOnlyBeforeAfterErrorEventDefinitions } from './events/collectionEvents.js';
+import { ChainedAwaiatableEventEmitter, ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
+import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 
 function assertReplacementHasId<TSchema>(replacement: WithoutId<TSchema>): asserts replacement is OptionalUnlessRequiredId<TSchema> {
   if (!(replacement as OptionalUnlessRequiredId<TSchema>)._id) {
     throw new Error("Can't upsert without a _id");
   }
+}
+
+type TypedUpdateResult<TSchema extends Document> = {
+  type: "UpdateResult",
+  result: UpdateResult<TSchema>
+} | {
+  type: "ModifyResult",
+  result: ModifyResult<TSchema>
+} | {
+  type: "Document",
+  result: WithId<TSchema> | null
+}
+
+type TypedDeleteResult<TSchema extends Document> = {
+  type: "DeleteResult",
+  result: DeleteResult
+} | {
+  type: "ModifyResult",
+  result: ModifyResult<TSchema>
+} | {
+  type: "Document",
+  result: WithId<TSchema> | null
 }
 
 class DocumentCache<TSchema extends Document> {
@@ -189,7 +214,7 @@ export class HookedCollection<
     );
   }
 
-  findOne<T = TSchema>(filter?: Filter<TSchema>, options?: AmendedFindOptions<TSchema> | undefined): Promise<T | null> {
+  findOne<T extends Document = TSchema>(filter?: Filter<TSchema>, options?: AmendedFindOptions<TSchema> | undefined): Promise<T | null> {
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -203,14 +228,15 @@ export class HookedCollection<
         "args",
         ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
           if (chainedFilter && options) {
-            return this.#collection.findOne(chainedFilter, chainedOptions) as Promise<T | null>;
+            return this.#collection.findOne<T>(chainedFilter, chainedOptions);
           }
           if (chainedFilter) {
-            return this.#collection.findOne(chainedFilter) as Promise<T | null>;
+            return this.#collection.findOne<T>(chainedFilter);
           }
-          return this.#collection.findOne() as Promise<T | null>;
+          return this.#collection.findOne<T>();
         },
-        options
+        options,
+        "findOne*"
       ),
       options
     );
@@ -301,18 +327,21 @@ export class HookedCollection<
       : HEM[BE] extends { returns: any }
         ? { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }
         : { invocationSymbol: symbol }
-      ) => Promise<any>,
+      ) => Promise<HEM[AE]["emitArgs"]["result"]>,
     BE extends `before.${IE}` & keyof HEM,
+    AE extends `after.${IE}` & keyof HEM,
     IE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema>,
+    // TODO: this is a bit of a hack. It stops us getting typeerrors on things like findOne*
+    OIE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema>,
     EA extends HEM[BE]["emitArgs"],
     OEA extends Omit<EA, "invocationSymbol" | "thisArg">
   >(
     internalEvent: IE,
     emitArgs: OEA,
-    beforeChainKey: keyof OEA | undefined,
+    beforeChainKey: (keyof OEA & HEM[BE]["returnEmitName"]) | undefined,
     fn: T,
     invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined,
-    ...additionalInternalEvents: IE[]
+    ...additionalInternalEvents: OIE[]
   ): Promise<Awaited<ReturnType<T>>> {
     let {
       args,
@@ -342,7 +371,7 @@ export class HookedCollection<
     )
   }
 
-  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions<CollectionHookedEventMap<TSchema>>) {
+  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions<CollectionHookedEventMap<TSchema>>): Promise<InsertOneResult<TSchema>> {
     const argsOrig = [doc, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
@@ -374,8 +403,8 @@ export class HookedCollection<
             if (beforeHooksResult === SkipDocument) {
               return {
                 acknowledged: false,
-                insertedId: null
-              } as unknown as InsertOneResult<TSchema>;
+                insertedId: null as unknown as InferIdType<TSchema>
+              };
             }
             return this.#collection.insertOne(beforeHooksResult, options)
           },
@@ -528,16 +557,24 @@ export class HookedCollection<
     );
   }
 
-  #upsert<ARGS extends UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>>(
-    caller: CollectionBeforeAfterErrorEventDefinitions<TSchema>["insert"]["caller"],
+  async #upsert<
+    CA extends {
+      [k in ("updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace")]: {
+        caller: k,
+        args: CollectionHookedEventMap<TSchema>[`before.${k}`]["emitArgs"]["args"]
+      }
+    }
+  >(
+    caller: ("updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"),
     parentInvocationSymbol: symbol,
-    argsOrig: ARGS,
-    args: ARGS,
-    fn: (args: ARGS) => Promise<UpdateResult | Document>,
+    argsOrig: UpsertCallArgs<TSchema, typeof caller>,
+    args: UpsertCallArgs<TSchema, typeof caller>,
+    fn: ({ caller, args }: CA[("updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace")]) => Promise<TypedUpdateResult<TSchema>>,
     options: StandardInvokeHookOptions<any, any> | undefined,// QUESTIONable
     doc: OptionalUnlessRequiredId<TSchema> = {} as OptionalUnlessRequiredId<TSchema>,
-  ): Promise<UpdateResult | Document> {
-    return this.#tryCatchEmit(
+  ): Promise<TypedUpdateResult<TSchema>> {
+    let inner: TypedUpdateResult<TSchema>;
+    await this.#tryCatchEmit(
       InternalEvents.insert,
       {
         args,
@@ -548,16 +585,38 @@ export class HookedCollection<
       },
       "doc",
       async ({
-        beforeHooksResult: doc // TODO - can we apply the doc?
-      }) => fn(args),
+        beforeHooksResult: doc // QUESTION - can we apply the doc? It might be a modifier
+      }) => {
+        inner = await fn({
+          caller,
+          args
+        } as CA[typeof caller]);
+        if (inner.type === "ModifyResult") {
+          return {
+            acknowledged: true,
+            insertedId: inner.result.value?._id as InferIdType<TSchema>
+          };
+        }
+        if (inner.type === "Document") {
+          return {
+            acknowledged: true,
+            insertedId: inner.result?._id as InferIdType<TSchema>
+          };
+        }
+        return inner.result;
+      },
       options,
     );
+    // @ts-expect-error it *HAS* been assigned
+    return inner;
   }
 
+  // TODO: rework this entire function - it's henously complicated.
   async #tryCatchDelete<
+    RetT extends Promise<DeleteResult | ModifyResult<TSchema> | WithId<TSchema> | null>,
     BEAD extends CollectionBeforeAfterErrorEventDefinitions<TSchema>,
-    T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: CollectionBeforeAfterErrorEventDefinitions<TSchema>["delete"]["before"]["returns"] }) => Promise<any>,
-    T1 extends () => Promise<any>,
+    T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: CollectionBeforeAfterErrorEventDefinitions<TSchema>["delete"]["before"]["returns"] }) => Promise<TypedDeleteResult<TSchema>>,
+    T1 extends () => RetT,
     BEA extends BEAD["delete"]["before"]["emitArgs"],
     OBEA extends Omit<BEA, "invocationSymbol" | "thisArg" | "getDocument" | "_id">
   >(
@@ -566,7 +625,7 @@ export class HookedCollection<
     noListenersFn: T1,
     limit: number | undefined,
     invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.delete" | "after.delete.success" | "after.delete.error" | "after.delete">
-  ): Promise<DeleteResult> {
+  ): Promise<Awaited<ReturnType<T1>>> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
@@ -589,19 +648,22 @@ export class HookedCollection<
 
     const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
-      return noListenersFn();
+      return noListenersFn() as Awaited<ReturnType<T1>>;
     }
     if (Object.hasOwn(beforeProjection, "_id") && !beforeProjection._id) {
       delete beforeProjection["_id"];
     }
+    const sort = beforeEmitArgs.args[1]?.["sort"];
     const cursor = this.#collection.find<{ _id: any }>(
       beforeEmitArgs.args[0],
       {
         projection: isCacheWarmed ? beforeProjection : { _id: 1 },
-        limit
+        limit,
+        ...(sort && { sort })
       }
     );
-    const result = {
+    // QUESTION: Why can't I use Awaited<RetT>
+    let result: DeleteResult | WithId<TSchema> | ModifyResult<TSchema> | null = {
       acknowledged: false,
       deletedCount: 0
     };
@@ -609,7 +671,8 @@ export class HookedCollection<
     const invocationSymbol = Symbol("delete");
 
     // TODO: this isn't right - it wont actually run in order :shrug:
-    const promiseFn = beforeEmitArgs.args[1]?.ordered ? Promise.all.bind(Promise) : Promise.allSettled.bind(Promise);
+    // ordered isn't present on findOneAndDeleteOptions
+    const promiseFn = beforeEmitArgs.args[1]?.["ordered"] ? Promise.all.bind(Promise) : Promise.allSettled.bind(Promise);
     await promiseFn(await cursor.map(async (nextItem) => {
       const { _id } = nextItem;
       if (isBeforeGreedy) {
@@ -638,26 +701,43 @@ export class HookedCollection<
         if (chainedFilter === SkipDocument) {
           return partialResult;
         }
-        result.acknowledged = true;
         gotResult = true;
         const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
           Events.afterSuccess.delete,
+          // I'm not sure how to do this cleanly
+          // the goal was to enforce type checking of caller + result between delete<one|many> and findOneAndDelete
+          // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
+          // @ts-expect-error
           {
             ...beforeEmitArgs,
             invocationSymbol,
             previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
             _id,
             thisArg: this,
-            result: partialResult,
+            result: partialResult.result,
           },
           "result",
           afterListeners
         );
         if (chainedResult !== undefined) {
-          partialResult = chainedResult;
+          partialResult.result = chainedResult;
         }
-        if (partialResult.deletedCount) {
-          result.deletedCount++;
+
+        // things get super messy here. deleteOne and deleteMany perDoc return a deleteOne result
+        // in the case of deleteMany this needs to be accumulated.
+        // findOneAndDelete returns a projected doc, a ModifyResult or null
+        if (partialResult.type === "DeleteResult") {
+          if (partialResult.result.acknowledged) {
+            // @ts-expect-error TODO: why does this not work, but almost identical code in #tryCatchUpdate does - result *WILL* be defined and the correct shape because only findOneAndDelete can set it to anything other than DeleteResult
+            result.acknowledged = true;
+          }
+          if (partialResult.result.deletedCount) {
+            // @ts-expect-error TODO: why does this not work, but almost identical code in #tryCatchUpdate does - result *WILL* be defined and the correct shape because only findOneAndDelete can set it to anything other than DeleteResult
+            result.deletedCount += partialResult.result.deletedCount;
+          }
+        }
+        else {
+          result = partialResult.result;
         }
         return partialResult;
       }
@@ -681,13 +761,13 @@ export class HookedCollection<
         throw e;
       }
     }).toArray());
-    return result;
+    return result as Awaited<Promise<ReturnType<T1>>>;
   }
 
   async #tryCatchUpdate<
     BEAD extends CollectionBeforeAfterErrorEventDefinitions<TSchema>,
-    T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: BEAD["update"]["before"]["returns"] }) => Promise<any>,
-    T1 extends () => Promise<any>,
+    T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: BEAD["update"]["before"]["returns"] }) => Promise<TypedUpdateResult<TSchema>>,
+    T1 extends () => Promise<UpdateResult<TSchema> | ModifyResult<TSchema> | Document | WithId<TSchema> | null>,
     BEA extends BEAD["update"]["before"]["emitArgs"],
     OBEA extends Omit<BEA, "invocationSymbol" | "thisArg" | "getDocument" | "_id">
   >(
@@ -696,7 +776,7 @@ export class HookedCollection<
     noListenersFn: T1,
     limit: number | undefined,
     invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.update" | "after.update.success" | "after.update.error" | "after.update">
-  ): Promise<UpdateResult> {
+  ): Promise<Awaited<ReturnType<T1>>> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
@@ -721,7 +801,7 @@ export class HookedCollection<
 
     const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
-      return noListenersFn();
+      return noListenersFn() as Awaited<ReturnType<T1>>;
     }
     if (Object.hasOwn(beforeProjection, "_id") && !beforeProjection._id) {
       delete beforeProjection["_id"];
@@ -735,42 +815,102 @@ export class HookedCollection<
       }
     );
     let nextItem = await cursor.next();
-    const result = {
+    let result: UpdateResult<TSchema> | Document | ModifyResult<TSchema> | WithId<TSchema> | null = {
       acknowledged: false,
       matchedCount: 0,
       modifiedCount: 0,
       upsertedCount: 0,
       upsertedId: null
-    }
+    };
     if (!nextItem) {
       if (beforeEmitArgs.args[2]?.upsert) {
         const upsertResult = await this.#upsert(
-          "updateOne",
+          beforeEmitArgs.caller,
           beforeEmitArgs.parentInvocationSymbol,
-          beforeEmitArgs.argsOrig,
-          beforeEmitArgs.args,
-          ([chainedFilter, chainedModifier, chainedOptions]) => {
-            if (beforeEmitArgs.caller === "replaceOne") {
-              assertReplacementHasId(chainedModifier as WithoutId<TSchema>);
-              return this.#collection.replaceOne(chainedFilter, chainedModifier as WithoutId<TSchema>, chainedOptions);
+          beforeEmitArgs.argsOrig as UpsertCallArgs<TSchema, typeof beforeEmitArgs.caller>,
+          beforeEmitArgs.args as UpsertCallArgs<TSchema, typeof beforeEmitArgs.caller>,
+          async({ caller, args }) => {
+            // for whatever reason, destructuring arrays means you lose type inferrence of those items
+            // const [chainedFilter, chainedModifier, chainedOptions] = args;
+            if (caller === "replaceOne") {
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.replaceOne(args[0], args[1], args[2]) as UpdateResult<TSchema>
+              };
             }
-            else if (beforeEmitArgs.caller === "updateOne") {
-              return this.#collection.updateOne(chainedFilter, chainedModifier, chainedOptions);
+            else if (caller === "updateOne") {
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.updateOne(args[0], args[1], args[2])
+              };
             }
-            else if (beforeEmitArgs.caller === "updateMany") {
-              return this.#collection.updateMany(chainedFilter, chainedModifier, chainedOptions);
+            else if (caller === "updateMany") {
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.updateMany(args[0], args[1], args[2])
+              };
+            }
+            else if (caller === "findOneAndUpdate") {
+              if (args[2]) {
+                // fucking typescript bullshit - yeah, it really is this stupid.
+                if (args[2].includeResultMetadata === false) {
+                  return {
+                    type: "Document",
+                    result: await this.#collection.findOneAndUpdate(args[0], args[1], { ...args[2], includeResultMetadata: false })
+                  };
+                }
+                return {
+                  // CAREFUL - apparently this defaults to true NOW, but will default to false in a future release... fun
+                  type: "ModifyResult",
+                  result: await this.#collection.findOneAndUpdate(args[0], args[1], args[2])
+                };
+              }
+              return {
+                type: "ModifyResult",
+                result: await this.#collection.findOneAndUpdate(args[0], args[1])
+              };
+            }
+            else if (caller === "findOneAndReplace") {
+              if (args[2]) {
+                // fucking typescript bullshit - yeah, it really is this stupid.
+                if (args[2].includeResultMetadata === false) {
+                  return {
+                    type: "Document",
+                    result: await this.#collection.findOneAndReplace(args[0], args[1], { ...args[2], includeResultMetadata: false })
+                  };
+                }
+                return {
+                  // CAREFUL - apparently this defaults to true NOW, but will default to false in a future release... fun
+                  type: "ModifyResult",
+                  result: await this.#collection.findOneAndReplace(args[0], args[1], args[2])
+                };
+              }
+              return {
+                type: "ModifyResult",
+                result: await this.#collection.findOneAndReplace(args[0], args[1])
+              };
             }
             throw new Error("Unrecognized caller");
           },
           invocationOptions,
           beforeEmitArgs.caller === "replaceOne" ? beforeEmitArgs[1] : undefined
         );
-        if (upsertResult.upsertedId) {
-          result.upsertedCount++;
-          result.upsertedId = upsertResult.upsertedId;
+        // in the case of updateOne, updateMany or replaceOne, the result should always be an `UpdateResult` (despite replaceOne claiming it can return a Document)
+        // in the case of findOneAnd*, it could be ModifyResult, WithId<TSchema> or null
+        // but we're duck typing for functionality here - god help us if we ever (for some reason) have a document in the DB with `upsertedId`
+        if (upsertResult.type === "UpdateResult") {
+          if (upsertResult.result.upsertedId) {
+            result.upsertedCount++;
+            result.upsertedId = upsertResult.result.upsertedId;
+          }
+        }
+        else {
+          result = upsertResult.result;
         }
       }
-      return result;
+
+      // TODO: why is this necessary? They are the same
+      return result as Awaited<ReturnType<T1>>;
     }
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed);
     const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false);
@@ -800,6 +940,10 @@ export class HookedCollection<
           if (chainedArgs !== SkipDocument) {
             const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
               Events.afterSuccess.update,
+              // I'm not sure how to do this cleanly
+              // the goal was to enforce type checking of caller + result between update<one|many>, replaceOne and findOneAnd*
+              // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
+              // @ts-expect-error
               {
                 ...beforeEmitArgs,
                 previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
@@ -807,25 +951,34 @@ export class HookedCollection<
                 _id,
                 getDocument: () => afterDocumentCache.getDocument(_id),
                 thisArg: this,
-                result: partialResult,
+                result: partialResult.result,
               },
               "result",
               afterListeners,
             );
             if (chainedResult !== undefined) {
-              partialResult = chainedResult;
+              partialResult.result = chainedResult;
             }
           }
-          if (partialResult.acknowledged) {
-            result.acknowledged = true;
+          // A few interesting facts:
+          // 1. All calls in a single request come from one place
+          // 1.a. so all the partialResults should be the same type
+          // 2. Only updateMany has multiple partialResults - it's result type is UpdateResult
+          // 3. So everything else can just reassign
+          if (partialResult.type === "UpdateResult") {
+            if (partialResult.result.acknowledged) {
+              result.acknowledged = true;
+            }
+            if (partialResult.result.matchedCount) {
+              result.matchedCount += partialResult.result.matchedCount;
+            }
+            if (partialResult.result.modifiedCount) {
+              result.modifiedCount += partialResult.result.modifiedCount;
+            }
           }
-          if (partialResult.matchedCount) {
-            result.matchedCount++;
+          else if (partialResult.type === "ModifyResult" || partialResult.type === "Document") {
+            result = partialResult.result;
           }
-          if (partialResult.modifiedCount) {
-            result.modifiedCount++;
-          }
-          return partialResult;
         }
         catch (e) {
           if (gotResult) {
@@ -850,9 +1003,8 @@ export class HookedCollection<
       })(nextItem));
       nextItem = await cursor.next();
     } while (nextItem);
-
     await Promise.all(promises);
-    return result;
+    return result as Awaited<ReturnType<T1>>;
   }
 
   replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: AmendedReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>> {
@@ -886,22 +1038,28 @@ export class HookedCollection<
             async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
               if (chainedFilterMutator === SkipDocument) {
                 return {
-                  acknowledged: false,
-                  matchedCount: 1,
-                  modifiedCount: 0,
-                  upsertedCount: 0,
-                  upsertedId: null
+                  type: "UpdateResult",
+                  result: {
+                    acknowledged: false,
+                    matchedCount: 1,
+                    modifiedCount: 0,
+                    upsertedCount: 0,
+                    upsertedId: null
+                  }
                 };
               }
               const { filter: chainedFilter, replacement: chainedReplacement } = chainedFilterMutator;
-              return this.#collection.replaceOne(
-                // @ts-expect-error
-                { $and: [chainedFilter, { _id }] },
-                chainedReplacement as WithoutId<TSchema>,
-                args[2]
-              );
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.replaceOne(
+                  // @ts-expect-error
+                  { $and: [chainedFilter, { _id }] },
+                  chainedReplacement as WithoutId<TSchema>,
+                  args[2]
+                ) as UpdateResult // it's only a document when explain: true, and I can't see how to make that the case.
+              };
             },
-            () => this.#collection.replaceOne(...args),
+            () => this.#collection.replaceOne(...args) as Promise<UpdateResult>,
             1,
             options
           );
@@ -916,7 +1074,7 @@ export class HookedCollection<
     filter: Filter<TSchema>,
     update: UpdateFilter<TSchema> | Partial<TSchema>,
     options?: AmendedUpdateOptions
-  ) {
+  ): Promise<UpdateResult<TSchema>> {
     const argsOrig = [filter, update, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
@@ -948,20 +1106,26 @@ export class HookedCollection<
             async ({ beforeHooksResult: chainedFilterMutator, _id }) => {
               if (chainedFilterMutator === SkipDocument) {
                 return {
-                  acknowledged: false,
-                  matchedCount: 1,
-                  modifiedCount: 0,
-                  upsertedCount: 0,
-                  upsertedId: null
+                  type: "UpdateResult",
+                  result: {
+                    acknowledged: false,
+                    matchedCount: 1,
+                    modifiedCount: 0,
+                    upsertedCount: 0,
+                    upsertedId: null
+                  }
                 };
               }
               const { filter: chainedFilter, mutator: chainedModifier } = chainedFilterMutator;
-              return this.#collection.updateOne(
-                // @ts-expect-error
-                { $and: [chainedFilter, { _id }]},
-                chainedModifier as UpdateFilter<TSchema>,
-                args[2]
-              );
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.updateOne(
+                  // @ts-expect-error
+                  { $and: [chainedFilter, { _id }]},
+                  chainedModifier as UpdateFilter<TSchema>,
+                  args[2]
+                )
+              };
             },
             // no hooks...
             () => this.#collection.updateOne(...args),
@@ -1011,11 +1175,14 @@ export class HookedCollection<
             }) => {
               if (chainedFilterMutator === SkipDocument) {
                 return {
-                  acknowledged: false,
-                  matchedCount: 1,
-                  modifiedCount: 0,
-                  upsertedCount: 0,
-                  upsertedId: null
+                  type: "UpdateResult",
+                  result: {
+                    acknowledged: false,
+                    matchedCount: 1,
+                    modifiedCount: 0,
+                    upsertedCount: 0,
+                    upsertedId: null
+                  }
                 };
               }
               const {
@@ -1025,12 +1192,15 @@ export class HookedCollection<
               // pull out upsert - we'll handle that separately if we detect no document matches.
               // we don't want a removal between the find above and this update to cause an upsert.
               const { upsert: _upsert, ...remainingChainedOptions } = args[2] || {};
-              return this.#collection.updateOne(
-                // @ts-expect-error _id could be anything :shrug:
-                { $and: [{ _id }, filter] },
-                mutator,
-                remainingChainedOptions
-              );
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.updateOne(
+                  // @ts-expect-error _id could be anything :shrug:
+                  { $and: [{ _id }, filter] },
+                  mutator,
+                  remainingChainedOptions
+                )
+              };
             },
             () => this.#collection.updateMany(...args),
             undefined,
@@ -1043,7 +1213,7 @@ export class HookedCollection<
     );
   }
 
-  deleteOne(filter: Filter<TSchema>, options?: AmendedDeleteOptions) {
+  deleteOne(filter: Filter<TSchema>, options?: AmendedDeleteOptions): Promise<DeleteResult> {
     const argsOrig = [filter, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
@@ -1074,15 +1244,21 @@ export class HookedCollection<
             }) => {
               if (chainedFilter === SkipDocument) {
                 return {
-                  acknowledged: false,
-                  deletedCount: 0
+                  type: "DeleteResult",
+                  result: {
+                    acknowledged: false,
+                    deletedCount: 0
+                  }
                 };
               }
-              return this.#collection.deleteOne(
-                // @ts-expect-error
-                { $and: [chainedFilter, { _id }] },
-                args[1]
-              );
+              return {
+                type: "DeleteResult",
+                result: await this.#collection.deleteOne(
+                  // @ts-expect-error
+                  { $and: [chainedFilter, { _id }] },
+                  args[1]
+                )
+              };
             },
             () => this.#collection.deleteOne(args[0], args[1]),
             1,
@@ -1095,7 +1271,7 @@ export class HookedCollection<
     );
   }
 
-  deleteMany(origFilter: Filter<TSchema>, origOptions?: AmendedDeleteOptions) {
+  deleteMany(origFilter: Filter<TSchema>, origOptions?: AmendedDeleteOptions): Promise<DeleteResult> {
     const argsOrig = [origFilter, origOptions] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
@@ -1126,14 +1302,21 @@ export class HookedCollection<
             }) => {
               if (chainedFilter === SkipDocument) {
                 return {
-                  deletedCount: 0
+                  type: "DeleteResult",
+                  result: {
+                    acknowledged: true,
+                    deletedCount: 0
+                  }
                 };
               }
-              return this.#collection.deleteOne(
-                // @ts-expect-error
-                { $and: [chainedFilter, { _id }] },
-                options
-              );
+              return {
+                type: "DeleteResult",
+                result: await this.#collection.deleteOne(
+                  // @ts-expect-error
+                  { $and: [chainedFilter, { _id }] },
+                  options
+                )
+              };
             },
             () => this.#collection.deleteMany(filter, options),
             undefined,
@@ -1224,6 +1407,280 @@ export class HookedCollection<
         ({ beforeHooksResult: [options] }) => this.#collection.countDocuments(options),
         options,
         InternalEvents["count*"]
+      ),
+      options
+    );
+  }
+
+
+  async findOneAndDelete(filter: Filter<TSchema>, options: AmendedFindOneAndDeleteOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  async findOneAndDelete(filter: Filter<TSchema>, options: AmendedFindOneAndDeleteOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  async findOneAndDelete(filter: Filter<TSchema>, options: AmendedFindOneAndDeleteOptions): Promise<ModifyResult<TSchema>>;
+  async findOneAndDelete(filter: Filter<TSchema>): Promise<ModifyResult<TSchema>>;
+  async findOneAndDelete(filter: Filter<TSchema>, options?: AmendedFindOneAndDeleteOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
+    const argsOrig = [filter, options] as const;
+    return this.#tryCatchEmit(
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "findOneAndDelete"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        "findOneAndDelete",
+        {
+          args: [filter, options]
+        },
+        "args",
+        ({
+          invocationSymbol: parentInvocationSymbol,
+          beforeHooksResult: [filter, options ]
+        }) => {
+          return this.#tryCatchDelete(
+            {
+              caller: "findOneAndDelete",
+              args: [filter, options],
+              argsOrig,
+              filter,
+              parentInvocationSymbol
+            },
+            async ({
+              _id,
+              beforeHooksResult: filter
+            }) => {
+              if (filter === SkipDocument) {
+                if (options?.includeResultMetadata === false) {
+                  return {
+                    type: "Document",
+                    result: null
+                  };
+                }
+                return {
+                  type: "ModifyResult",
+                  result: {
+                    value: null,
+                    ok: 0
+                  }
+                };
+              }
+              if (options) {
+                return {
+                  type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
+                  result: await this.#collection.findOneAndDelete(
+                    // @ts-expect-error
+                    { $and: [{ _id }, filter] },
+                    options
+                  )
+                };
+              }
+              return {
+                type: "ModifyResult",
+                result: await this.#collection.findOneAndDelete(
+                  // @ts-expect-error
+                  { $and: [{ _id }, filter] }
+                )
+              };
+            },
+            () => {
+              if (options) {
+                return this.#collection.findOneAndDelete(filter, options);
+              }
+              return this.#collection.findOneAndDelete(filter);
+            },
+            undefined,
+            options
+          )
+        },
+        options,
+        "findOne*"
+      ),
+      options
+    );
+  }
+  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: AmendedFindOneAndUpdateOptions & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
+  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: AmendedFindOneAndUpdateOptions & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
+  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: AmendedFindOneAndUpdateOptions): Promise<WithId<TSchema> | null>;
+  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>): Promise<ModifyResult<TSchema>>;
+  async findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: AmendedFindOneAndUpdateOptions): Promise<ModifyResult<TSchema> | WithId<TSchema> | null> {
+    const argsOrig = [filter, update, options] as const;
+    return this.#tryCatchEmit(
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "findOneAndUpdate"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        "findOneAndUpdate",
+        {
+          args: argsOrig
+        },
+        "args",
+        ({
+          beforeHooksResult: [filter, update, options],
+          invocationSymbol
+        }) => {
+          return this.#tryCatchUpdate(
+            {
+              args: [filter, update, options],
+              argsOrig,
+              caller: "findOneAndUpdate",
+              filterMutator: {
+                filter,
+                mutator: update
+              },
+              parentInvocationSymbol: invocationSymbol
+            },
+            async ({
+              _id,
+              beforeHooksResult: chainedFilterMutator
+            }) => {
+              // this isn't likely to be useful - but it is technically valid.
+              if (chainedFilterMutator === SkipDocument) {
+                if (options?.includeResultMetadata === false) {
+                  return {
+                    type: "Document",
+                    result: null
+                  };
+                }
+                else {
+                  return {
+                    type: "ModifyResult",
+                    result: {
+                      ok: 0,
+                      value: null,
+                    }
+                  };
+                }
+              }
+
+              if (options) {
+                return {
+                  type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
+                  result: await this.#collection.findOneAndUpdate(
+                    // @ts-expect-error
+                    { $and: [{ _id }, chainedFilterMutator.filter] },
+                    chainedFilterMutator.mutator,
+                    options
+                  )
+                };
+              }
+              return {
+                type: "ModifyResult",
+                result: await this.#collection.findOneAndUpdate(
+                  // @ts-expect-error
+                  { $and: [{ _id }, chainedFilterMutator.filter] },
+                  chainedFilterMutator.mutator
+                )
+              };
+            },
+            // no hooks...
+            () => {
+              if (options) {
+                return this.#collection.findOneAndUpdate(filter, update, options);
+              }
+              return this.#collection.findOneAndUpdate(filter, update);
+            },
+            1,
+            options
+          )
+        },
+        options,
+        "findOne*"
+      ),
+      options
+    );
+  }
+
+  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: AmendedFindOneAndReplaceOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: AmendedFindOneAndReplaceOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: AmendedFindOneAndReplaceOptions): Promise<ModifyResult<TSchema>>;
+  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>): Promise<ModifyResult<TSchema>>;
+  async findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: AmendedFindOneAndReplaceOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
+    const argsOrig = [filter, replacement, options] as const;
+    return this.#tryCatchEmit(
+      InternalEvents["*"],
+      {
+        args: argsOrig,
+        operation: "findOneAndReplace"
+      },
+      undefined,
+      () => this.#tryCatchEmit(
+        "findOneAndReplace",
+        {
+          args: [filter, replacement, options]
+        },
+        "args",
+        ({
+          beforeHooksResult: [filter, replacement, options],
+          invocationSymbol
+        }) => {
+          return this.#tryCatchUpdate(
+            {
+              args: [filter, replacement, options],
+              argsOrig,
+              caller: "findOneAndReplace",
+              filterMutator: {
+                filter,
+                replacement
+              },
+              parentInvocationSymbol: invocationSymbol
+            },
+            async ({
+              _id,
+              beforeHooksResult: chainedFilterMutator
+            }) => {
+              // this isn't likely to be useful - but it is technically valid.
+              if (chainedFilterMutator === SkipDocument) {
+                if (options?.includeResultMetadata === false) {
+                  return {
+                    type: "Document",
+                    result: null
+                  };
+                }
+                else {
+                  return {
+                    type: "ModifyResult",
+                    result: {
+                      ok: 0,
+                      value: null,
+                    }
+                  };
+                }
+              }
+              if (options) {
+                return {
+                  type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
+                  result: await this.#collection.findOneAndReplace(
+                    // @ts-expect-error
+                    { $and: [{ _id }, chainedFilterMutator.filter] },
+                    chainedFilterMutator.replacement,
+                    options
+                  )
+                };
+              }
+              return {
+                type: "ModifyResult",
+                result: await this.#collection.findOneAndReplace(
+                  // @ts-expect-error
+                  { $and: [{ _id }, chainedFilterMutator.filter] },
+                  chainedFilterMutator.replacement
+                )
+              };
+            },
+            // no hooks...
+            () => {
+              if (options) {
+                return this.#collection.findOneAndReplace(filter, replacement, options);
+              }
+              return this.#collection.findOneAndReplace(filter, replacement);
+            },
+            1,
+            options
+          )
+        },
+        options,
+        "findOne*"
       ),
       options
     );

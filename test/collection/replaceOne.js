@@ -2,6 +2,7 @@ import { SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
+import { updateTests } from "./update.js";
 
 
 export function defineReplaceOne() {
@@ -46,17 +47,6 @@ export function defineReplaceOne() {
       assert.strictEqual(insertMock.mock.callCount(), 2, "We called the insert hook once");
       assert.strictEqual(updateMock.mock.callCount(), 0, "we didn't call the update hook");
     });
-  });
-
-  it("Should skip documents correctly", async () => {
-    const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
-    hookedCollection.on("before.update", () => SkipDocument);
-    const afterUpdateMock = mock.fn();
-    hookedCollection.on("after.update.success", afterUpdateMock);
-    const result = await hookedCollection.replaceOne({ _id: "test" }, { a: 1 });
-    assert.strictEqual(afterUpdateMock.mock.callCount(), 0, "Should have only called after.insert for one doc");
-    assert.deepEqual(result, {
-      acknowledged: false, matchedCount: 1, modifiedCount: 0, upsertedCount: 0, upsertedId: null
-    });
+    updateTests("replaceOne");
   });
 }

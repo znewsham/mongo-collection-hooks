@@ -55,7 +55,7 @@ export async function hooksChain(hookName, chainKey, fn, hookResults = ["Hello",
   let first = 0;
   let second = 0;
   let cachedValueOrig;
-  const { fakeCollection, hookedCollection } = getHookedCollection([1, 2, 3]);
+  const { fakeCollection, hookedCollection } = getHookedCollection([{ _id: "test", value: 1 }, { _id: "test2", value: 2 }, { _id: "test3", value: 3 }]);
   hookedCollection.on(hookName, async ({
     [chainKey]: value,
     [`${chainKey}Orig`]: valueOrig

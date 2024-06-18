@@ -7,7 +7,7 @@ export function defineCountDocuments() {
   describe("countDocuments", () => {
     it("should pass the options between before hooks correctly", async () => {
       const result = await hooksChain("before.countDocuments", "args", ({ hookedCollection }) => hookedCollection.countDocuments({ _id: "test" }), [[{ _id: "test" }], [{ _id: "test" }]]);
-      assert.deepEqual(result, 0, "It deleted");
+      assert.deepEqual(result, 1, "Found it");
     });
 
     it("should pass the result between after hooks correctly", async () => {

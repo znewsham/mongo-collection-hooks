@@ -9,12 +9,12 @@ import { updateTests } from "./update.js";
 export function defineUpdateMany() {
   describe("updateMany", () => {
     it("should pass the options between before hooks correctly", async () => {
-      const result = await hooksChain("before.updateMany", "args", ({ hookedCollection }) => hookedCollection.updateMany({ _id: "test" }), [[[{ _id: "test" }]], [[{ _id: "test" }]]]);
+      const result = await hooksChain("before.updateMany", "args", ({ hookedCollection }) => hookedCollection.updateMany({ _id: "test" }, { $set: { value: "test" } }), [[[{ _id: "test" }, { $set: { value: "test" } }]], [[{ _id: "test" }, { $set: { value: "test" } }]]]);
       assert.deepEqual(result.acknowledged, true, "It updated");
     });
 
     it("should pass the result between after hooks correctly", async () => {
-      const result = await hooksChain("after.updateMany.success", "result", ({ hookedCollection }) => hookedCollection.updateMany({ _id: "test" }));
+      const result = await hooksChain("after.updateMany.success", "result", ({ hookedCollection }) => hookedCollection.updateMany({ _id: "test" }, { $set: { value: "test" } }));
       assert.deepEqual(result, "Hello World");
     });
 

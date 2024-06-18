@@ -13,6 +13,9 @@ import { defineDeleteMany } from "./deleteMany.js";
 import { defineCount } from "./count.js";
 import { defineCountDocuments } from "./countDocuments.js";
 import { defineEstimatedDocumentCount } from "./estimatedDocumentCount.js";
+import { defineFindOneAndUpdate } from "./findOneAndUpdate.js";
+import { defineFindOneAndReplace } from "./findOneAndReplace.js";
+import { defineFindOneAndDelete } from "./findOneAndDelete.js";
 
 describe("collection", () => {
   defineInsertOne();
@@ -29,4 +32,7 @@ describe("collection", () => {
   defineCount();
   defineCountDocuments();
   defineEstimatedDocumentCount();
+  defineFindOneAndUpdate();
+  defineFindOneAndReplace();
+  defineFindOneAndDelete();
 });

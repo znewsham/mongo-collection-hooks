@@ -128,7 +128,7 @@ type UpdateCommon<TSchema extends Document> = {
   caller: "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace",
   args: UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema> | FindOneAndUpdateCallArgs<TSchema> | FindOneAndReplaceCallArgs<TSchema>,
   thisArg: HookedCollectionInterface<TSchema>,
-  result: UpdateResult<TSchema> | ModifyResult<TSchema> | Document | null,
+  result: UpdateResult<TSchema> | ModifyResult<TSchema> | null,
   beforeHookReturns: UpdateCommon<TSchema>["custom"]["filterMutator"] | typeof SkipDocument,
   custom: {
     /** The ID of the document being updated */
@@ -186,10 +186,10 @@ type UpdateCommonErrorOrResultEmitArgs<TSchema extends Document> = {
 
 type InsertCommon<TSchema extends Document> = {
   caller: "insertOne" | "insertMany" | "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace",
-  args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema> | UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
+  args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema> | UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema> | FindOneAndReplaceCallArgs<TSchema> | FindOneAndUpdateCallArgs<TSchema>,
   beforeHookReturns: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument
   thisArg: HookedCollectionInterface<TSchema>,
-  result: InsertOneResult<TSchema> | UpdateResult | Document,
+  result: InsertOneResult<TSchema> | UpdateResult,
   custom: {
     /** The document to be inserted */
     doc: OptionalUnlessRequiredId<TSchema>
@@ -313,15 +313,33 @@ export type FindOneAndDeleteCallArgs<TSchema extends Document> = readonly [Filte
 export type FindOneAndUpdateCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, UpdateFilter<TSchema>, AmendedFindOneAndUpdateOptions | undefined];
 export type FindOneAndReplaceCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, WithoutId<TSchema>, AmendedFindOneAndReplaceOptions | undefined];
 
-export type UpsertCallArgs<TSchema extends Document, Caller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndUpdate" | "findOneAndReplace"> = Caller extends "updateOne" | "updateMany"
+export type UpsertCallArgs<
+  TSchema extends Document,
+  Caller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"
+> = Caller extends "updateOne" | "updateMany"
   ? UpdateCallArgs<TSchema>
   : Caller extends "replaceOne"
-    ? | ReplaceCallArgs<TSchema>
+    ? ReplaceCallArgs<TSchema>
     : Caller extends "findOneAndUpdate"
       ? FindOneAndUpdateCallArgs<TSchema>
-      : never
+      : Caller extends "findOneAndReplace"
+        ? FindOneAndReplaceCallArgs<TSchema>
+        : never
 ;
 
+export type UpsertAndCallerCallArgs<
+  TSchema extends Document,
+  Caller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"
+> = Caller extends "updateOne" | "updateMany"
+  ? { caller: Caller, args: UpdateCallArgs<TSchema> }
+  : Caller extends "replaceOne"
+    ? { caller: Caller, args: ReplaceCallArgs<TSchema> }
+    : Caller extends "findOneAndUpdate"
+      ? { caller: Caller, args: FindOneAndUpdateCallArgs<TSchema> }
+      : Caller extends "findOneAndReplace"
+        ? { caller: Caller, args: FindOneAndReplaceCallArgs<TSchema> }
+        : never
+;
 type TopLevelCall<O extends CommonDefinition & { result: any }> = {
   before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & Pick<O, "options">,
   success: ReturnsResult<O> & AfterTopLevelSuccessEmitArgs<O> & Pick<O, "options">,
@@ -340,7 +358,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   findOne: TopLevelCall<{
     args: FindCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
-    result: TSchema | null
+    result: Document | null
   }>,
   find: TopLevelCall<{
     args: FindCallArgs<TSchema>,

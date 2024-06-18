@@ -23,12 +23,12 @@ export function updateTests(oneOrMany) {
         const doc = await getDocument();
         assert.strictEqual(doc.thing, 1, "thing is set");
       });
-      await hookedCollection[oneOrMany]({}, { $set: { thing: 1 } });
+      await hookedCollection[oneOrMany]({}, oneOrMany.includes("eplace") ? { thing: 1 } : { $set: { thing: 1 } });
     });
 
     it("if there are no before/after update hooks, there should be no extraneous DB operations", async () => {
       const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
-      await hookedCollection[oneOrMany]({}, { $set: { a: 1 } });
+      await hookedCollection[oneOrMany]({}, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(fakeCollection.callCount, 1, "Only one DB operation");
     });
 
@@ -38,7 +38,7 @@ export function updateTests(oneOrMany) {
       hookedCollection.on("before.update", () => {});
       hookedCollection.on("after.update", () => {});
       hookedCollection.on("after.update", () => {});
-      await hookedCollection[oneOrMany]({}, { $set: { a: 1 } });
+      await hookedCollection[oneOrMany]({}, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
     });
 
@@ -50,7 +50,7 @@ export function updateTests(oneOrMany) {
       hookedCollection.on("before.update", async ({ getDocument }) => {
         await getDocument();
       });
-      await hookedCollection[oneOrMany]({}, { $set: { a: 1 } });
+      await hookedCollection[oneOrMany]({}, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(fakeCollection.callCount, 3, "Only three DB operation");
     });
 
@@ -62,7 +62,7 @@ export function updateTests(oneOrMany) {
       hookedCollection.on("before.update", async ({ getDocument }) => {
         await getDocument();
       });
-      await hookedCollection[oneOrMany]({}, { $set: { a: 1 } });
+      await hookedCollection[oneOrMany]({}, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(fakeCollection.callCount, 2, "Only two DB operation");
     });
     it("Should skip documents correctly", async () => {
@@ -70,56 +70,84 @@ export function updateTests(oneOrMany) {
       hookedCollection.on("before.update", () => SkipDocument);
       const afterUpdateMock = mock.fn();
       hookedCollection.on("after.update.success", afterUpdateMock);
-      const result = await hookedCollection[oneOrMany]({ _id: "test" }, { $set: { a: 1 } });
+      const result = await hookedCollection[oneOrMany]({ _id: "test" }, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(afterUpdateMock.mock.callCount(), 0, "Should have only called after.update for one doc");
-      assert.deepEqual(result, {
-        acknowledged: false, matchedCount: 1, modifiedCount: 0, upsertedCount: 0, upsertedId: null
-      });
+      if (oneOrMany.startsWith("findOneAnd")) {
+        assert.deepEqual(result, { ok: 0, value: null });
+      }
+      else {
+        assert.deepEqual(result, {
+          acknowledged: false, matchedCount: 1, modifiedCount: 0, upsertedCount: 0, upsertedId: null
+        });
+      }
     });
     it("Should greedily fetch the document if an after hook has fetchPrevious", async () => {
       const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
       const afterUpdateMock = mock.fn();
       hookedCollection.on("after.update.success", afterUpdateMock, { fetchPrevious: true });
-      const result = await hookedCollection[oneOrMany]({ _id: "test" }, { $set: { a: 1 } });
+
+      const result = await hookedCollection[oneOrMany]({ _id: "test" }, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(afterUpdateMock.mock.callCount(), 1, "Should have only called after.update for one doc");
       assert.deepEqual(afterUpdateMock.mock.calls[0].arguments[0].previousDocument, { _id: "test" }, "Should have access to the previous document");
-      assert.deepEqual(result, {
-        acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-      });
+      if (oneOrMany.startsWith("findOneAnd")) {
+        assert.deepEqual(result, { ok: 1, value: { _id: "test" } });
+      }
+      else {
+        assert.deepEqual(result, {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        });
+      }
     });
     it("Should not have access to the previous document if nothing called fetchPrevious", async () => {
       const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
       const afterUpdateMock = mock.fn();
       hookedCollection.on("after.update.success", afterUpdateMock, { fetchPrevious: false });
-      const result = await hookedCollection[oneOrMany]({ _id: "test" }, { $set: { a: 1 } });
+      const result = await hookedCollection[oneOrMany]({ _id: "test" }, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(afterUpdateMock.mock.callCount(), 1, "Should have only called after.update for one doc");
       assert.deepEqual(afterUpdateMock.mock.calls[0].arguments[0].previousDocument, undefined, "Should NOT have access to the previous document");
-      assert.deepEqual(result, {
-        acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-      });
+
+      if (oneOrMany.startsWith("findOneAnd")) {
+        assert.deepEqual(result, { ok: 1, value: { _id: "test" } });
+      }
+      else {
+        assert.deepEqual(result, {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        });
+      }
     });
     it("Should adhere to the previous projection", async () => {
       const { hookedCollection } = getHookedCollection([{ _id: "test", omitted: "omitted" }]);
       const afterUpdateMock = mock.fn();
       hookedCollection.on("after.update.success", afterUpdateMock, { fetchPrevious: true, fetchPreviousProjection: { _id: 1 } });
-      const result = await hookedCollection[oneOrMany]({ _id: "test" }, { $set: { a: 1 } });
+      const result = await hookedCollection[oneOrMany]({ _id: "test" }, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(afterUpdateMock.mock.callCount(), 1, "Should have only called after.update for one doc");
       assert.deepEqual(afterUpdateMock.mock.calls[0].arguments[0].previousDocument, { _id: "test" }, "Should have access to the previous document");
-      assert.deepEqual(result, {
-        acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-      });
+
+      if (oneOrMany.startsWith("findOneAnd")) {
+        assert.deepEqual(result, { ok: 1, value: { _id: "test", omitted: "omitted" } });
+      }
+      else {
+        assert.deepEqual(result, {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        });
+      }
     });
     it("Should have access to the previous doc if ANY hook does", async () => {
       const { hookedCollection } = getHookedCollection([{ _id: "test", omitted: "omitted" }]);
       const afterUpdateMock = mock.fn();
       hookedCollection.on("after.update.success", afterUpdateMock);
       hookedCollection.on("after.update.success", () => {}, { fetchPrevious: true, fetchPreviousProjection: { _id: 1 } });
-      const result = await hookedCollection[oneOrMany]({ _id: "test" }, { $set: { a: 1 } });
+      const result = await hookedCollection[oneOrMany]({ _id: "test" }, oneOrMany.includes("eplace") ? { a: 1 } : { $set: { a: 1 } });
       assert.strictEqual(afterUpdateMock.mock.callCount(), 1, "Should have only called after.update for one doc");
       assert.deepEqual(afterUpdateMock.mock.calls[0].arguments[0].previousDocument, { _id: "test" }, "Should have access to the previous document");
-      assert.deepEqual(result, {
-        acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
-      });
+      if (oneOrMany.startsWith("findOneAnd")) {
+        assert.deepEqual(result, { ok: 1, value: { _id: "test", omitted: "omitted" } });
+      }
+      else {
+        assert.deepEqual(result, {
+          acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
+        });
+      }
     });
   });
 }

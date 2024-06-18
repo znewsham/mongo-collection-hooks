@@ -105,16 +105,18 @@ export class FakeCollection {
     }
     else if (!doc) {
       return {
-        acknowledged: true
+        acknowledged: true,
+        matchedCount: 0,
+        modifiedCount: 0
       };
     }
-    else {
-      const index = this.#data.indexOf(doc);
-      this.docs[index] = { ...replacement, _id: doc._id };
-      return {
-
-      };
-    }
+    const index = this.#data.indexOf(doc);
+    this.#data[index] = { ...replacement, _id: doc._id };
+    return {
+      acknowledged: true,
+      matchedCount: 1,
+      modifiedCount: 1
+    };
   }
 
   updateOne(filter, $modifier) {
@@ -156,15 +158,69 @@ export class FakeCollection {
   }
 
   countDocuments(filter) {
+    // this.#callCount++; - handled by find
     return this.find(filter).count();
   }
 
   count(filter) {
+    // this.#callCount++; - handled by find
     return this.find(filter).count();
   }
 
   async estimatedDocumentCount() {
+    this.#callCount++;
     return this.#data.length;
+  }
+
+  async findOneAndUpdate(filter, mutator, options) {
+    this.#callCount++;
+    const doc = await this.findOne(filter);
+    this.#callCount--;
+    if (doc) {
+      await this.updateOne({ _id: doc._id }, mutator);
+      this.#callCount--;
+    }
+    if (options?.includeResultMetadata === false) {
+      return doc;
+    }
+    return {
+      value: doc,
+      ok: 1
+    };
+  }
+
+  async findOneAndReplace(filter, replacement, options) {
+    this.#callCount++;
+    const doc = await this.findOne(filter);
+    this.#callCount--;
+    if (doc) {
+      await this.replaceOne({ _id: doc._id }, replacement);
+      this.#callCount--;
+    }
+    if (options?.includeResultMetadata === false) {
+      return doc;
+    }
+    return {
+      value: doc,
+      ok: 1
+    };
+  }
+
+  async findOneAndDelete(filter, options) {
+    this.#callCount++;
+    const doc = await this.findOne(filter);
+    this.#callCount--;
+    if (doc) {
+      await this.deleteOne({ _id: doc._id });
+      this.#callCount--;
+    }
+    if (options?.includeResultMetadata === false) {
+      return doc;
+    }
+    return {
+      value: doc,
+      ok: 1
+    };
   }
 }
 
