@@ -1,5 +1,4 @@
-import { MongoDBNamespace, ReadConcern, ReadPreference, AbstractCursor, AbstractCursorEvents, CommonEvents, CursorStreamOptions, GenericListener, Long, ReadConcernLike, ReadPreferenceLike } from "mongodb";
-import { Readable } from "stream";
+import type { MongoDBNamespace, ReadConcern, ReadPreference, AbstractCursor, AbstractCursorEvents, CommonEvents, CursorStreamOptions, GenericListener, Long, ReadConcernLike, ReadPreferenceLike } from "mongodb";
 
 export abstract class AbstractHookedCursor<TSchema extends any> implements AbstractCursor<TSchema> {
   #cursor: AbstractCursor<TSchema>
@@ -45,7 +44,7 @@ export abstract class AbstractHookedCursor<TSchema extends any> implements Abstr
   readBufferedDocuments(number?: number | undefined): any[] {
     return this.#cursor.readBufferedDocuments(number);
   }
-  stream(options?: CursorStreamOptions | undefined): Readable & AsyncIterable<any> {
+  stream(options?: CursorStreamOptions | undefined) {
     return this.#cursor.stream(options);
   }
   tryNext(): Promise<any> {
