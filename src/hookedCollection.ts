@@ -184,7 +184,7 @@ export class HookedCollection<
       return chainedCursor as unknown as HookedAggregationCursor<T>;
     }
     catch (e) {
-      this.#ee.callAllSyncChain(
+      this.#ee.callAllSync(
         {
           args: [chainedPipeline, chainedOptions],
           error: e,
@@ -236,7 +236,12 @@ export class HookedCollection<
           return this.#collection.findOne<T>();
         },
         options,
-        "findOne*"
+        {
+          event: "findOne*",
+          emitArgs: {
+            operation: "findOne"
+          }
+        }
       ),
       options
     );
@@ -341,7 +346,7 @@ export class HookedCollection<
     beforeChainKey: (keyof OEA & HEM[BE]["returnEmitName"]) | undefined,
     fn: T,
     invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined,
-    ...additionalInternalEvents: OIE[]
+    ...additionalInternalEvents: OIE[] | { event: OIE, emitArgs: Partial<HEM[`before.${OIE}`]["emitArgs"]> }[]
   ): Promise<Awaited<ReturnType<T>>> {
     let {
       args,
@@ -1350,7 +1355,7 @@ export class HookedCollection<
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
-        args: [options],
+        args: [filter, options],
         operation: "count"
       },
       undefined,
@@ -1362,7 +1367,12 @@ export class HookedCollection<
         "args",
         ({ beforeHooksResult: [options] }) => this.#collection.count(options),
         options,
-        InternalEvents["count*"]
+        {
+          event: InternalEvents["count*"],
+          emitArgs: {
+            operation: "count"
+          }
+        }
       ),
       options
     );
@@ -1384,7 +1394,12 @@ export class HookedCollection<
         "args",
         ({ beforeHooksResult: [options] }) => this.#collection.estimatedDocumentCount(options as AmendedEstimatedDocumentCountOptions),
         options,
-        InternalEvents["count*"]
+        {
+          event: InternalEvents["count*"],
+          emitArgs: {
+            operation: "estimatedDocumentCount"
+          }
+        }
       ),
       options
     );
@@ -1394,7 +1409,7 @@ export class HookedCollection<
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
-        args: [options],
+        args: [filter, options],
         operation: "countDocuments"
       },
       undefined,
@@ -1406,7 +1421,12 @@ export class HookedCollection<
         "args",
         ({ beforeHooksResult: [options] }) => this.#collection.countDocuments(options),
         options,
-        InternalEvents["count*"]
+        {
+          event: InternalEvents["count*"],
+          emitArgs: {
+            operation: "countDocuments"
+          }
+        }
       ),
       options
     );
@@ -1492,7 +1512,12 @@ export class HookedCollection<
           )
         },
         options,
-        "findOne*"
+        {
+          event: "findOne*",
+          emitArgs: {
+            operation: "findOneAndDelete"
+          }
+        }
       ),
       options
     );
@@ -1586,7 +1611,12 @@ export class HookedCollection<
           )
         },
         options,
-        "findOne*"
+        {
+          event: "findOne*",
+          emitArgs: {
+            operation: "findOneAndUpdate"
+          }
+        }
       ),
       options
     );
@@ -1680,7 +1710,12 @@ export class HookedCollection<
           )
         },
         options,
-        "findOne*"
+        {
+          event: "findOne*",
+          emitArgs: {
+            operation: "findOneAndReplace"
+          }
+        }
       ),
       options
     );

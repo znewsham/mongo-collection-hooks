@@ -25,5 +25,15 @@ export function defineCount() {
         "It rejected correctly"
       );
     });
+
+    it("should not receive an operation", async () => {
+      const { hookedCollection } = getHookedCollection();
+      const countMock = mock.fn((emitArgs) => {
+        assert.ok(!Object.hasOwn(emitArgs, "operation"), "It should not have an operation");
+      });
+      hookedCollection.on("before.count", countMock);
+      await hookedCollection.count();
+      assert.strictEqual(countMock.mock.callCount(), 1, "Should have called the mock");
+    });
   });
 }

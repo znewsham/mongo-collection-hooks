@@ -32,7 +32,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
   #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
   #findInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
-  #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next" | "find.cursor.close"> = "find";
+  #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next" | "find.cursor.close">;
   #cursor: FindCursor<TSchema>;
   #filter: Document;
   #interceptExecute: boolean;
@@ -87,7 +87,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     return this.#tryCatchEmit(
       this.#ee,
       () => this.#cursor.close(),
-      "find",
+      undefined,
       undefined,
       {
         parentInvocationSymbol: this.#findInvocationSymbol,
@@ -98,55 +98,82 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       undefined,
       this.#invocationOptions,
       "find.cursor.close",
-      "cursor.close"
+      {
+        event: InternalEvents["cursor.close"],
+        emitArgs: {
+          operation: "find.cursor.close"
+        }
+      }
     );
   }
 
   rewind() {
     const invocationSymbol = Symbol("find.cursor.rewind");
-    this.#ee.callAllSyncChain(
+    this.#ee.callAllSync(
       {
         invocationSymbol,
-        caller: "find",
         parentInvocationSymbol: this.#findInvocationSymbol,
         thisArg: this,
       },
       this.#invocationOptions,
       Events.before["find.cursor.rewind"],
-      Events.before["cursor.rewind"]
+      {
+        event: Events.before["cursor.rewind"],
+        emitArgs: {
+          operation: "find.cursor.rewind"
+        }
+      }
     );
 
     try {
       this.#cursor.rewind();
-      this.#ee.callAllSyncChain(
+      this.#ee.callAllSync(
         {
           thisArg: this,
-          caller: "find",
           parentInvocationSymbol: this.#findInvocationSymbol,
           invocationSymbol
         },
         this.#invocationOptions,
         Events.afterSuccess["find.cursor.rewind"],
         Events.after["find.cursor.rewind"],
-        Events.afterSuccess["cursor.rewind"],
-        Events.after["cursor.rewind"],
+        {
+          event: Events.afterSuccess["cursor.rewind"],
+          emitArgs: {
+            operation: "find.cursor.rewind"
+          }
+        },
+        {
+          event: Events.after["cursor.rewind"],
+          emitArgs: {
+            operation: "find.cursor.rewind"
+          }
+        }
       );
       return;
     }
     catch (e) {
-      this.#ee.callAllSyncChain(
+      this.#ee.callAllSync(
         {
           error: e,
           thisArg: this,
-          caller: "find",
           parentInvocationSymbol: this.#findInvocationSymbol,
           invocationSymbol
         },
         this.#invocationOptions,
         Events.afterError["find.cursor.rewind"],
         Events.after["find.cursor.rewind"],
-        Events.afterError["cursor.rewind"],
-        Events.after["cursor.rewind"],
+        {
+          event: Events.afterError["cursor.rewind"],
+          emitArgs: {
+            operation: "find.cursor.rewind"
+          }
+        },
+        {
+          event: Events.after["cursor.rewind"],
+          emitArgs: {
+            operation: "find.cursor.rewind"
+          }
+        }
       );
       throw e;
     }
@@ -167,7 +194,12 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           },
           this.#invocationOptions,
           Events.before["find.cursor.execute"],
-          Events.before["cursor.execute"]
+          {
+            event: Events.before["cursor.execute"],
+            emitArgs: {
+              operation: "find.cursor.execute"
+            }
+          }
         );
         try {
           if (this.#interceptExecute) {
@@ -193,8 +225,18 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             this.#invocationOptions,
             Events.afterSuccess["find.cursor.execute"],
             Events.after["find.cursor.execute"],
-            Events.afterSuccess["cursor.execute"],
-            Events.after["find.cursor.execute"],
+            {
+              event: Events.afterSuccess["cursor.execute"],
+              emitArgs: {
+                operation: "find.cursor.execute"
+              }
+            },
+            {
+              event: Events.after["cursor.execute"],
+              emitArgs: {
+                operation: "find.cursor.execute"
+              }
+            },
           );
         }
         catch (error) {
@@ -209,8 +251,18 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             this.#invocationOptions,
             Events.afterError["find.cursor.execute"],
             Events.after["find.cursor.execute"],
-            Events.afterError["cursor.execute"],
-            Events.after["cursor.execute"],
+            {
+              event: Events.afterError["cursor.execute"],
+              emitArgs: {
+                operation: "find.cursor.execute"
+              }
+            },
+            {
+              event: Events.after["cursor.execute"],
+              emitArgs: {
+                operation: "find.cursor.execute"
+              }
+            }
           );
           throw error;
         }
@@ -239,7 +291,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       return await fn();
     }
     finally {
-      this.#caller = "find";
       this.#currentInvocationSymbol = this.#findInvocationSymbol;
     }
   }
@@ -273,7 +324,12 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           undefined,
           this.#invocationOptions,
           InternalEvents["find.cursor.next"],
-          InternalEvents["cursor.next"]
+          {
+            event: InternalEvents["cursor.next"],
+            emitArgs: {
+              operation: "find.cursor.next"
+            }
+          }
         )
       },
       this.#caller,
@@ -304,7 +360,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             }
             return this.#cursor.toArray();
           }, invocationSymbol),
-          this.#caller,
+          undefined,
           undefined,
           {
             parentInvocationSymbol: this.#currentInvocationSymbol,
@@ -315,7 +371,12 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           undefined,
           this.#invocationOptions,
           InternalEvents["find.cursor.toArray"],
-          InternalEvents["cursor.toArray"],
+          {
+            event: InternalEvents["cursor.toArray"],
+            emitArgs: {
+              operation: "find.cursor.toArray"
+            }
+          }
         );
       },
       this.#caller,
@@ -341,7 +402,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         return this.#tryCatchEmit(
           this.#ee,
           ({ beforeHooksResult: optionsToUse }) => this.#cursor.count(...optionsToUse),
-          this.#caller,
+          undefined,
           [options],
           {
             parentInvocationSymbol: this.#currentInvocationSymbol,
@@ -382,7 +443,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             }
             return this.#cursor.forEach(chainedIterator);
           }, invocationSymbol),
-          this.#caller,
+          undefined,
           [iterator],
           {
             parentInvocationSymbol: this.#currentInvocationSymbol,
@@ -393,7 +454,12 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           "args",
           this.#invocationOptions,
           "find.cursor.forEach",
-          "cursor.forEach"
+          {
+            event: "cursor.forEach",
+            emitArgs: {
+              operation: "find.cursor.forEach"
+            }
+          }
         );
       },
       this.#caller,
@@ -429,14 +495,18 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     );
     await this.#ee.callAllAwaitableInParallel(
       {
-        caller: "find",
         invocationSymbol,
         parentInvocationSymbol: this.#findInvocationSymbol,
         thisArg: this
       },
       this.#invocationOptions,
       "before.find.cursor.asyncIterator",
-      "before.cursor.asyncIterator"
+      {
+        event: "before.cursor.asyncIterator",
+        emitArgs: {
+          operation: "find.cursor.asyncIterator"
+        }
+      }
     );
     try {
 
@@ -453,7 +523,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       errored = true;
       await this.#ee.callAllAwaitableInParallel(
         {
-          caller: "find",
           invocationSymbol,
           parentInvocationSymbol: this.#findInvocationSymbol,
           thisArg: this,
@@ -462,8 +531,18 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         this.#invocationOptions,
         "after.find.cursor.asyncIterator.error",
         "after.find.cursor.asyncIterator",
-        "after.cursor.asyncIterator.error",
-        "after.cursor.asyncIterator"
+        {
+          event: "after.cursor.asyncIterator.error",
+          emitArgs: {
+            operation: "find.cursor.asyncIterator"
+          }
+        },
+        {
+          event: "after.cursor.asyncIterator",
+          emitArgs: {
+            operation: "find.cursor.asyncIterator"
+          }
+        }
       );
 
       await this.#ee.callAllAwaitableInParallel(
@@ -488,7 +567,6 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       }
       await this.#ee.callAllAwaitableInParallel(
         {
-          caller: "find",
           invocationSymbol,
           parentInvocationSymbol: this.#findInvocationSymbol,
           thisArg: this,
@@ -496,8 +574,18 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         this.#invocationOptions,
         "after.find.cursor.asyncIterator.success",
         "after.find.cursor.asyncIterator",
-        "after.cursor.asyncIterator.success",
-        "after.cursor.asyncIterator"
+        {
+          event: "after.cursor.asyncIterator.success",
+          emitArgs: {
+            operation: "find.cursor.asyncIterator"
+          }
+        },
+        {
+          event: "after.cursor.asyncIterator",
+          emitArgs: {
+            operation: "find.cursor.asyncIterator"
+          }
+        }
       );
 
       await this.#ee.callAllAwaitableInParallel(

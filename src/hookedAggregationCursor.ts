@@ -143,7 +143,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
 
             return next;
           }, invocationSymbol),
-          this.#caller,
+          undefined,
           undefined,
           {
             parentInvocationSymbol: this.#currentInvocationSymbol,
@@ -154,7 +154,12 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           undefined,
           this.#invocationOptions,
           InternalEvents["aggregation.cursor.next"],
-          InternalEvents["cursor.next"]
+          {
+            event: InternalEvents["cursor.next"],
+            emitArgs: {
+              operation: "aggregation.cursor.next"
+            }
+          }
         )
       },
       this.#caller,
@@ -204,7 +209,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
             }
             return this.#cursor.toArray();
           }, invocationSymbol),
-          this.#caller,
+          undefined,
           undefined,
           {
             parentInvocationSymbol: this.#aggregateInvocationSymbol,
@@ -215,7 +220,12 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           undefined,
           this.#invocationOptions,
           InternalEvents["aggregation.cursor.toArray"],
-          InternalEvents["cursor.toArray"],
+          {
+            event: InternalEvents["cursor.toArray"],
+            emitArgs: {
+              operation: "aggregation.cursor.toArray"
+            }
+          }
         );
       },
       this.#caller,
@@ -256,8 +266,13 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           false,
           "args",
           this.#invocationOptions,
-          "aggregation.cursor.forEach",
-          "cursor.forEach"
+          InternalEvents["aggregation.cursor.forEach"],
+          {
+            event: InternalEvents["cursor.forEach"],
+            emitArgs: {
+              operation: "aggregation.cursor.forEach"
+            }
+          }
         );
       },
       this.#caller,
@@ -293,14 +308,18 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     );
     await this.#ee.callAllAwaitableInParallel(
       {
-        caller: "aggregate",
         invocationSymbol,
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
         thisArg: this
       },
       this.#invocationOptions,
       "before.aggregation.cursor.asyncIterator",
-      "before.cursor.asyncIterator"
+      {
+        event: "before.cursor.asyncIterator",
+        emitArgs: {
+          operation: "aggregation.cursor.asyncIterator"
+        }
+      }
     );
     try {
       if (this.#cursor.id === undefined) {
@@ -316,7 +335,6 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       errored = true;
       await this.#ee.callAllAwaitableInParallel(
         {
-          caller: "aggregate",
           invocationSymbol,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           thisArg: this,
@@ -324,7 +342,19 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         },
         this.#invocationOptions,
         "after.aggregation.cursor.asyncIterator.error",
-        "after.cursor.asyncIterator.error"
+        "after.aggregation.cursor.asyncIterator",
+        {
+          event: "after.cursor.asyncIterator.error",
+          emitArgs: {
+            operation: "aggregation.cursor.asyncIterator"
+          }
+        },
+        {
+          event: "after.cursor.asyncIterator",
+          emitArgs: {
+            operation: "aggregation.cursor.asyncIterator"
+          }
+        }
       );
 
       await this.#ee.callAllAwaitableInParallel(
@@ -349,14 +379,25 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       }
       await this.#ee.callAllAwaitableInParallel(
         {
-          caller: "aggregate",
           invocationSymbol,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           thisArg: this
         },
         this.#invocationOptions,
         "after.aggregation.cursor.asyncIterator.success",
-        "after.cursor.asyncIterator.success"
+        "after.aggregation.cursor.asyncIterator",
+        {
+          event: "after.cursor.asyncIterator.success",
+          emitArgs: {
+            operation: "aggregation.cursor.asyncIterator"
+          }
+        },
+        {
+          event: "after.cursor.asyncIterator",
+          emitArgs: {
+            operation: "aggregation.cursor.asyncIterator"
+          }
+        }
       );
 
       await this.#ee.callAllAwaitableInParallel(
@@ -391,7 +432,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
     return this.#tryCatchEmit(
       this.#ee,
       () => this.#cursor.close(),
-      "aggregate",
+      undefined,
       undefined,
       {
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
@@ -402,45 +443,64 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       undefined,
       this.#invocationOptions,
       "aggregation.cursor.close",
-      "cursor.close"
+      {
+        event: InternalEvents["cursor.close"],
+        emitArgs: {
+          operation: "aggregation.cursor.close"
+        }
+      }
     );
   }
 
   rewind() {
     const invocationSymbol = Symbol("aggregation.cursor.rewind");
-    this.#ee.callAllSyncChain(
+    this.#ee.callAllSync(
       {
         invocationSymbol,
-        caller: "find",
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
         thisArg: this,
       },
       this.#invocationOptions,
       Events.before["aggregation.cursor.rewind"],
-      Events.before["cursor.rewind"]
+      {
+        event: Events.before["cursor.rewind"],
+        emitArgs: {
+          operation: "aggregation.cursor.rewind"
+        }
+      }
     );
 
     try {
       this.#cursor.rewind();
-      this.#ee.callAllSyncChain(
+      this.#ee.callAllSync(
         {
           thisArg: this,
-          caller: "find",
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           invocationSymbol
         },
         this.#invocationOptions,
         Events.afterSuccess["aggregation.cursor.rewind"],
-        Events.afterSuccess["cursor.rewind"],
+        Events.after["aggregation.cursor.rewind"],
+        {
+          event: Events.afterSuccess["cursor.rewind"],
+          emitArgs: {
+            operation: "aggregation.cursor.rewind"
+          }
+        },
+        {
+          event: Events.after["cursor.rewind"],
+          emitArgs: {
+            operation: "aggregation.cursor.rewind"
+          }
+        }
       );
       return;
     }
     catch (e) {
-      this.#ee.callAllSyncChain(
+      this.#ee.callAllSync(
         {
           error: e,
           thisArg: this,
-          caller: "find",
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           invocationSymbol
         },

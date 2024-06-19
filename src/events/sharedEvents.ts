@@ -1,5 +1,5 @@
 import type { Document } from "mongodb";
-import { AfterStar, BeforeAfterCallbackArgsAndReturn, BeforeStar, ExtractEventDefinitions, NoReturns } from "./helpersTypes.js"
+import { AfterStar, AfterStarCaller, BeforeAfterCallbackArgsAndReturn, BeforeStar, BeforeStarCaller, ExtractEventDefinitions, NoReturns } from "./helpersTypes.js"
 import { ErrorT, ResultOrError, Result } from "../commentedTypes.js"
 import { HookedCollectionInterface } from "./hookedCollectionInterface.js";
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
@@ -10,10 +10,10 @@ import { BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggrega
 
 export type BeforeAfterErrorSharedEventDefinitions<TSchema extends Document> = {
   "*": {
-    before: NoReturns & BeforeStar<AllCommon<TSchema>>,
-    success: NoReturns & AfterStar<AllCommon<TSchema>, Result<AllCommon<TSchema>>>,
-    after: NoReturns & AfterStar<AllCommon<TSchema>, ResultOrError<AllCommon<TSchema>>>,
-    error: NoReturns & AfterStar<AllCommon<TSchema>, ErrorT>,
+    before: NoReturns & BeforeStarCaller<AllCommon<TSchema>>,
+    success: NoReturns & AfterStarCaller<AllCommon<TSchema>, Result<AllCommon<TSchema>>>,
+    after: NoReturns & AfterStarCaller<AllCommon<TSchema>, ResultOrError<AllCommon<TSchema>>>,
+    error: NoReturns & AfterStarCaller<AllCommon<TSchema>, ErrorT>,
     caller: AllCommon<TSchema>["caller"]
   }
 }

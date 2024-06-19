@@ -1,6 +1,14 @@
-import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
+import { ExtraEvent, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { HookedEventEmitter, internalEventToBeforeAfterKey, ChainedCallbackEventMapWithCaller, SkipDocument } from "./events/index.js";
 
+
+export type ExtraBeforeAfterEvent<
+  HEM extends ChainedCallbackEventMapWithCaller,
+  K extends string & keyof HEM,
+> = K | {
+  event: K,
+  emitArgs?: Partial<HEM[`before.${K}`]["emitArgs"]>
+}
 
 // don't hate the player, hate typescript :|. This Horrible function does a relatively good job of enforcing types externally
 // I don't love that we're currying types here, but it means the actual tryCatchEmit function has no knowledge of the shape of the data.
@@ -16,6 +24,7 @@ export function getTryCatch<
     IE extends string & keyof BEAAD,
     BEA extends HEM[BE]["emitArgs"],
     AEA extends HEM[AE]["emitArgs"],
+    AIE extends string & keyof BEAAD,
     BEAO extends Omit<BEA, "args" | "invocationSymbol" | "caller">,
     AEAO extends BEA extends { argsOrig: any[] } ? Omit<AEA, "args" | "invocationSymbol" | "caller" | "result"> : Omit<AEA, "args" | "argsOrig" | "invocationSymbol" | "caller" | "result">,
     CT extends BEAAD[IE]["caller"] | undefined
@@ -30,7 +39,7 @@ export function getTryCatch<
     chainArgsKey: ("args" | keyof((BEAO | AEAO) & (BEAO & AEAO)) & string) | undefined,
     invocationOptions: StandardInvokeHookOptions<HEM, BE | AE | `after.${IE}.error`> | undefined,
     internalEvent: IE,
-    ...additionalInternalEvents: (keyof BEAAD & string)[]
+    ...additionalInternalEvents: ExtraBeforeAfterEvent<HEM, AIE>[]
   ): Promise<Awaited<ReturnType<T>>> {
     if (caller) {
       ee.assertCaller(caller, `before.${internalEvent}`);
@@ -45,10 +54,30 @@ export function getTryCatch<
       afterSuccess: successEvent,
       afterError: errorEvent,
     }: { before: `before.${IE}`, after: `after.${IE}`, afterSuccess: `after.${IE}.success`, afterError: `after.${IE}.error` } = internalEventToBeforeAfterKey(internalEvent);
-    const additionalBeforeEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).before);
-    const additionalSuccessEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).afterSuccess);
-    const additionalErrorEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).afterError);
-    const additionalAfterEvents = additionalInternalEvents.map(additionalInternalEvent => internalEventToBeforeAfterKey(additionalInternalEvent).after);
+    const additionalBeforeEvents = additionalInternalEvents.map((additionalInternalEvent) => {
+      return {
+        event: internalEventToBeforeAfterKey(additionalInternalEvent["event"] || additionalInternalEvent).before,
+        emitArgs: additionalInternalEvent["emitArgs"] || {}
+      };
+    });
+    const additionalSuccessEvents = additionalInternalEvents.map((additionalInternalEvent) => {
+      return {
+        event: internalEventToBeforeAfterKey(additionalInternalEvent["event"] || additionalInternalEvent).afterSuccess,
+        emitArgs: additionalInternalEvent["emitArgs"] || {}
+      };
+    });
+    const additionalErrorEvents = additionalInternalEvents.map((additionalInternalEvent) => {
+      return {
+        event: internalEventToBeforeAfterKey(additionalInternalEvent["event"] || additionalInternalEvent).afterError,
+        emitArgs: additionalInternalEvent["emitArgs"] || {}
+      };
+    });
+    const additionalAfterEvents = additionalInternalEvents.map((additionalInternalEvent) => {
+      return {
+        event: internalEventToBeforeAfterKey(additionalInternalEvent["event"] || additionalInternalEvent).after,
+        emitArgs: additionalInternalEvent["emitArgs"] || {}
+      };
+    });
     if (chainArgs && chainArgsKey) {
       chainedArgs = await ee.callAllAwaitableChainWithKey(
         {

@@ -48,7 +48,11 @@ export type ChainedListenerCallback<
   K extends keyof T,
   T extends ChainedCallbackEventMap
 > = (
-  T[K]["callbackArgs"] extends object ? (...args: [T[K]["callbackArgs"]]) => T[K]["isPromise"] extends false ? T[K]["returns"] | void : T[K]["returns"] | Promise<T[K]["returns"]> | void | Promise<void> : never
+  T[K]["callbackArgs"] extends object
+  ? (...args: [T[K]["callbackArgs"]]) => T[K]["isPromise"] extends false
+    ? T[K]["returns"] | void
+    : T[K]["returns"] | void | Promise<void | T[K]["returns"]>
+  : never
 )
 
 function filterHooksWithOptions<K extends keyof EM, EM extends ChainedCallbackEventMap>(eventName: K, hooksWithOptions: CallbackAndOptionsOfEm<EM, K>[], options: StandardInvokeHookOptions<EM, K>): CallbackAndOptionsOfEm<EM, K>[] {
@@ -69,6 +73,14 @@ function filterHooksWithOptions<K extends keyof EM, EM extends ChainedCallbackEv
     }
     return hookOptions.tags.every(tag => !runExclude || !excludeSet.has(tag)) && hookOptions.tags.some(tag => !runInclude || includeSet.has(tag));
   });
+}
+
+export type ExtraEvent<
+  EM extends ChainedCallbackEventMap,
+  K extends keyof EM = keyof EM
+> = K | {
+  event: K,
+  emitArgs?: Partial<EM[K]["emitArgs"]>
 }
 
 export class ChainedAwaiatableEventEmitter<
@@ -125,7 +137,7 @@ export class ChainedAwaiatableEventEmitter<
   }
 
   callAllSyncChainWithKey<K extends keyof EM & keyof SYNCEM, MK extends keyof EM & keyof SYNCEM, CK extends string & keyof EM[MK]["emitArgs"] & EM[MK]["returnEmitName"]>(
-    emitArgs: EM[K]["emitArgs"],
+    emitArgs: EM[MK]["emitArgs"],
     chainKey: CK | undefined,
     options: StandardInvokeHookOptions<EM, K | MK> | undefined,
     masterEventName: MK,
@@ -141,23 +153,24 @@ export class ChainedAwaiatableEventEmitter<
     );
   }
 
-  callAllSyncChain<K extends keyof EM & keyof SYNCEM, MK extends keyof EM & keyof SYNCEM>(
-    emitArgs: EM[K]["emitArgs"],
+  callAllSync<
+    K extends keyof EM & keyof SYNCEM,
+    MK extends keyof EM & keyof SYNCEM
+  >(
+    emitArgs: EM[MK]["emitArgs"],
     options: StandardInvokeHookOptions<EM, K | MK> | undefined,
     masterEventName: MK,
-    ...otherEventNames: K[]
+    ...additionalEvents: ExtraEvent<SYNCEM | EM, K>[]
   ): void {
-    const listeners = [masterEventName, ...otherEventNames].flatMap(eventName => this.relevantAwaitableListeners(eventName, options));
-    listeners.forEach(listener => listener(emitArgs));
-  }
-
-  callSyncChain<K extends keyof EM & keyof SYNCEM>(
-    eventName: K,
-    emitArgs: EM[K]["emitArgs"],
-    options?: StandardInvokeHookOptions<EM, K> | undefined,
-  ): void {
-    const listeners = this.relevantAwaitableListeners(eventName, options);
-    listeners.forEach(listener => listener(emitArgs));
+    [masterEventName, ...additionalEvents].flatMap(eventNameOrObject => {
+      const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
+      const listeners = this.relevantAwaitableListeners(eventName, options);
+      const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
+      listeners.forEach(listener => listener({
+        ...emitArgs,
+        ...extraEmitArgs
+      }));
+    });
   }
 
   async #callAwaitableChainWithKey<K extends keyof EM, CK extends keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]> (
@@ -204,47 +217,47 @@ export class ChainedAwaiatableEventEmitter<
     );
   }
 
-  async callAwaitableInParallel<K extends keyof EM>(
-    eventName: K,
-    emitArgs: EM[K]["emitArgs"],
-    options?: StandardInvokeHookOptions<EM, K>,
-  ) {
-    return this.callAllAwaitableInParallel(
-      emitArgs,
-      options,
-      eventName,
-    );
-  }
-
-  async callAllAwaitableInParallel<MK extends keyof EM, K extends keyof EM>(
+  async callAllAwaitableInParallel<
+    MK extends keyof EM,
+    K extends keyof EM,
+  >(
     emitArgs: EM[MK]["emitArgs"],
     options: StandardInvokeHookOptions<EM, MK | K> | undefined,
     masterEventName: MK,
-    ...eventNames: K[]
+    ...additionalEvents: ExtraEvent<EM, K>[]
   ) {
-    const allListeners = [masterEventName, ...eventNames].flatMap(eventName => this.relevantAwaitableListeners(eventName, options));
-    return Promise.all(allListeners.map(listener => listener(emitArgs)));
+    return Promise.all([masterEventName, ...additionalEvents].flatMap(eventNameOrObject => {
+      const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
+      const listeners = this.relevantAwaitableListeners(eventName, options);
+      const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
+      return listeners.map(listener => listener({
+        ...emitArgs,
+        ...extraEmitArgs
+      }));
+    }));
   }
 
   async callAllAwaitableChainWithKey<
     MK extends keyof EM,
-    K extends keyof EM,
-    CK extends string & keyof EM[MK]["emitArgs"] & EM[MK]["returnEmitName"]
+    K extends keyof EM & string,
+    CK extends string & keyof EM[MK]["emitArgs"] & EM[MK]["returnEmitName"],
   >(
     emitArgs: EM[MK]["emitArgs"],
     chainKey: CK,
     options: StandardInvokeHookOptions<EM, MK | K> | undefined,
     masterEventName: MK,
-    ...eventNames: K[]
+    ...additionalEvents: ExtraEvent<EM, K>[]
   ): Promise<EM[K]["returns"]> {
-    const origKey = `${chainKey}Orig`;
     let chainedValue = emitArgs[chainKey];
     const origChainedValue = chainedValue;
-    for (const eventName of [masterEventName, ...eventNames]) {
+    for (const eventNameOrObject of [masterEventName, ...additionalEvents]) {
+      const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
+      const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
       const chainedResult = await this.#callAwaitableChainWithKey(
         eventName,
         {
           ...emitArgs,
+          ...extraEmitArgs,
           [chainKey]: chainedValue,
         },
         chainKey,

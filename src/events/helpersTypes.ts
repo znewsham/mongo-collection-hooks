@@ -101,7 +101,7 @@ export type BeforeAfterCallbackArgsAndReturn<
     callbackArgs:
     {
       /** The original "thing", e.g. arguments, result, doc, or whatever before any hook was applied */
-      [rek in BIM[k]["returnEmitName"] as `${rek}Orig`]: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never
+      [rek in BIM[k]["returnEmitName"] as `${rek}Orig`]: BIM[k] extends { returns: any } ? BIM[k]["emitArgs"][BIM[k]["returnEmitName"]] : never
     } & BIM[k]["emitArgs"],
     emitArgs: BIM[k]["emitArgs"],
     returns: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never,
@@ -181,13 +181,14 @@ export type AfterInternalSuccessEmitArgsNoArgs<O extends CommonDefinitionWithCal
     & O["custom"]
 }
 
-export type AfterInternalEmitArgsNoArgs<O extends CommonDefinitionWithCaller> = {
+export type AfterInternalEmitArgsNoArgs<O extends CommonDefinitionWithCaller, resultOrError = { error?: any }> = {
   emitArgs:
     ThisArg<O>
     & Result<O>
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & resultOrError
     & O["custom"]
 }
 
@@ -222,25 +223,33 @@ export type BeforeInternalEmitArgsNoArgsOrig<O extends CommonDefinitionWithCalle
     & O["custom"]
 }
 
-export type BeforeStar<O extends CommonDefinitionWithCaller> = {
+export type BeforeStar<O extends CommonDefinition> = {
   emitArgs:
-    ThisArg<O>
+    (ThisArg<O>
     & Args<O>
-    & { caller?: Caller<O>["caller"] }
-    & { parentInvocationSymbol?: ParentInvocationSymbol["parentInvocationSymbol"] }
     & InvocationSymbol
-    & O["custom"]
+    & O["custom"])
 }
 
-export type AfterStar<O extends CommonDefinitionWithCaller, resultOrError> = {
+export type BeforeStarCaller<O extends CommonDefinitionWithCaller> = {
+  emitArgs: BeforeStar<O>["emitArgs"]
+    & { caller?: Caller<O>["caller"] }
+    & { parentInvocationSymbol?: ParentInvocationSymbol["parentInvocationSymbol"] }
+}
+
+export type AfterStar<O extends CommonDefinition, resultOrError> = {
   emitArgs:
     ThisArg<O>
     & Args<O>
-    & { caller?: Caller<O>["caller"] }
-    & { parentInvocationSymbol?: ParentInvocationSymbol["parentInvocationSymbol"] }
     & InvocationSymbol
     & O["custom"]
     & resultOrError
+}
+
+export type AfterStarCaller<O extends CommonDefinitionWithCaller, resultOrError> = {
+  emitArgs: AfterStar<O, resultOrError>["emitArgs"]
+    & { caller?: Caller<O>["caller"] }
+    & { parentInvocationSymbol?: ParentInvocationSymbol["parentInvocationSymbol"] }
 }
 
 export type CommonDefinition = {
