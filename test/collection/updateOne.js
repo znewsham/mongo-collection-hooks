@@ -110,6 +110,38 @@ export function defineUpdateOne() {
       }], "called the afterUpdate hook correctly");
     });
 
+    it("should provide the correct args (with id) to the hooks", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const mockBefore = mock.fn();
+      const mockAfter = mock.fn();
+      hookedCollection.on("before.updateOne", mockBefore, { includeId: true });
+      hookedCollection.on("after.updateOne.success", mockAfter, { includeId: true });
+      await hookedCollection.updateOne({}, { $set: { a: 1 } });
+      assertImplements(
+        mockBefore.mock.calls[0].arguments,
+        [{
+          args: [{}, { $set: { a: 1 } }],
+          argsOrig: [{}, { $set: { a: 1 } }],
+          _id: "test",
+          thisArg: hookedCollection
+        }],
+        "before hook is correct"
+      );
+
+      assertImplements(
+        mockAfter.mock.calls[0].arguments,
+        [{
+          args: [{}, { $set: { a: 1 } }],
+          argsOrig: [{}, { $set: { a: 1 } }],
+          _id: "test",
+          result: { acknowledged: true, matchedCount: 1, modifiedCount: 1 },
+          resultOrig: { acknowledged: true, matchedCount: 1, modifiedCount: 1 },
+          thisArg: hookedCollection
+        }],
+        "after hook is correct"
+      );
+    });
+
     updateTests("updateOne");
   });
 }

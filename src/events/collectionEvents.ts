@@ -104,6 +104,7 @@ type AfterTopLevelSuccessEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & Result<O>
     & InvocationSymbol
+    & O["custom"]
 };
 
 type AfterTopLevelErrorEmitArgs<O extends CommonDefinition> = {
@@ -113,6 +114,7 @@ type AfterTopLevelErrorEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & InvocationSymbol
     & ErrorT
+    & O["custom"]
 };
 
 type AfterTopLevelEmitArgs<O extends CommonDefinition> = {
@@ -122,6 +124,7 @@ type AfterTopLevelEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & InvocationSymbol
     & ResultOrError<O>
+    & O["custom"]
 };
 
 type UpdateCommon<TSchema extends Document> = {
@@ -405,12 +408,6 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     caller: InsertCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },
-  deleteOne: TopLevelCall<{
-    args: DeleteCallArgs<TSchema>,
-    thisArg: HookedCollectionInterface<TSchema>,
-    result: DeleteResult,
-    options: StandardDefineHookOptions,
-  }>,
   delete: {
     before: ReturnsNamedEmitArg<
       Pick<DeleteCommon<TSchema>, "beforeHookReturns">
@@ -430,10 +427,23 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     caller: DeleteCommon<TSchema>["caller"],
     options: StandardDefineHookOptions,
   },
+  deleteOne: TopLevelCall<{
+    args: DeleteCallArgs<TSchema>,
+    thisArg: HookedCollectionInterface<TSchema>,
+    result: DeleteResult,
+    custom: {
+      _id?: InferIdType<TSchema>[]
+    },
+    options: StandardDefineHookOptions & { includeId?: boolean }
+  }>,
   deleteMany: TopLevelCall<{
     args: DeleteCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
     result: DeleteResult
+    custom: {
+      _ids?: InferIdType<TSchema>[]
+    },
+    options: StandardDefineHookOptions & { includeIds?: boolean }
   }>,
   replaceOne: TopLevelCall<{
     args: ReplaceCallArgs<TSchema>,
@@ -443,12 +453,20 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   updateOne: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
-    result: UpdateResult<TSchema>
+    result: UpdateResult<TSchema>,
+    custom: {
+      _id?: InferIdType<TSchema>
+    },
+    options: StandardDefineHookOptions & { includeId?: boolean }
   }>,
   updateMany: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
-    result: UpdateResult<TSchema>
+    result: UpdateResult<TSchema>,
+    custom: {
+      _ids?: InferIdType<TSchema>[]
+    },
+    options: StandardDefineHookOptions & { includeIds?: boolean }
   }>,
   update: {
     before: ReturnsNamedEmitArg<Pick<UpdateCommon<TSchema>, "beforeHookReturns">

@@ -48,10 +48,11 @@ collection.on("before.deleteOne", async ({
   argsOrig,
   invocationSymbol,
   thisArg,
+  _id,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, missing);
+  console.log(args, argsOrig, _id, invocationSymbol, thisArg, missing);
   return args;
 });
 
@@ -62,10 +63,11 @@ collection.on("after.deleteOne", async ({
   thisArg,
   resultOrig,
   result,
+  _id,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, result, resultOrig, missing);
+  console.log(args, argsOrig, _id, invocationSymbol, thisArg, result, resultOrig, missing);
   return result;
 });
 
@@ -74,10 +76,11 @@ collection.on("before.deleteMany", async ({
   argsOrig,
   invocationSymbol,
   thisArg,
+  _ids,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, missing);
+  console.log(args, argsOrig, _ids, invocationSymbol, thisArg, missing);
   return args;
 });
 
@@ -88,9 +91,10 @@ collection.on("after.deleteMany", async ({
   thisArg,
   resultOrig,
   result,
+  _ids,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, result, resultOrig, missing);
+  console.log(args, argsOrig, _ids, invocationSymbol, thisArg, result, resultOrig, missing);
   return result;
 });

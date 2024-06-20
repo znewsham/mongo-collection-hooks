@@ -1,4 +1,5 @@
 lib
+legacy
 node_modules
 package-lock.json
 *.scratch.*

@@ -142,7 +142,7 @@ export class FakeCollection {
     docs.forEach((doc) => {
       const before = JSON.stringify(doc);
       if (doc) {
-        LocalCollection._modify(JSON.parse(JSON.stringify(doc)), $modifier);
+        LocalCollection._modify(doc, $modifier);
       }
       const after = JSON.stringify(doc);
       if (before !== after) {

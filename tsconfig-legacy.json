@@ -1,0 +1,20 @@
+{
+  "include": ["src/*", "src/events/events.ts"],
+  "exclude": ["src/__*"],
+  "compilerOptions": {
+    "outDir": "legacy",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "target": "ES2015",
+    "declaration": true,
+    "useDefineForClassFields": true,
+
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "sourceMap": true,
+    "allowJs": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "maxNodeModuleJsDepth": 2
+  }
+}

@@ -5,6 +5,7 @@
   "main": "lib/index.js",
   "type": "module",
   "scripts": {
+    "build-legacy": "npx tsc --outDir legacy --target es2016",
     "test": "npm install && npm run test:unit && npm run test:types",
     "test:unit": "node --enable-source-maps --test test/index.js",
     "test:watch": "node --enable-source-maps --watch --test test/index.js",
@@ -20,6 +21,10 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
+    },
+    "./legacy": {
+      "types": "./legacy/index.d.ts",
+      "default": "./legacy/index.js"
     }
   },
   "devDependencies": {

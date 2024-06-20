@@ -315,7 +315,8 @@ When invoking `findOne` the following hooks (if defined) will run in order.
 type Before = {
   callArg: StandardBeforeHookCallArg & {
     args: [Document, InsertOptions],
-    argsOrig: <same as args>
+    argsOrig: <same as args>,
+    _id?: InferIdType
   },
   returns: [Document, InsertOptions] | void | Promise<[Document, InsertOptions] | void>
 }
@@ -328,7 +329,7 @@ type AfterSuccess = {
   returns: InsertResult | void | Promise<InsertResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type Options = StandardDefineHookOptions & { includeId?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -347,7 +348,8 @@ When invoking `insertOne` the following hooks (if defined) will run in order:
 type Before = {
   callArg: StandardBeforeHookCallArg & {
     args: [Document[], InsertOptions],
-    argsOrig: <same as args>
+    argsOrig: <same as args>,
+    _ids?: InferIdType[]
   },
   returns: [Document[], InsertOptions] | void | Promise<[Document[], InsertOptions] | void>
 }
@@ -360,7 +362,7 @@ type AfterSuccess = {
   returns: InsertResult | void | Promise<InsertResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type Options = StandardDefineHookOptions & { includeIds?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -379,7 +381,8 @@ When invoking `insertMany` the following hooks (if defined) will run in order:
 type Before = {
   callArg: StandardBeforeHookCallArg & {
     args: [Filter, DeleteOptions],
-    argsOrig: <same as args>
+    argsOrig: <same as args>,
+    _id?: InferIdType
   },
   returns: [Filter, DeleteOptions] | void | Promise<[Filter, DeleteOptions] | void>
 }
@@ -392,7 +395,7 @@ type AfterSuccess = {
   returns: DeleteResult | void | Promise<DeleteResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type Options = StandardDefineHookOptions & { includeId?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -411,7 +414,8 @@ When invoking `deleteOne` the following hooks (if defined) will run in order:
 type Before = {
   callArg: StandardBeforeHookCallArg & {
     args: [Filter[], DeleteOptions],
-    argsOrig: <same as args>
+    argsOrig: <same as args>,
+    _ids?: InferIdType[]
   },
   returns: [Filter[], DeleteOptions] | void | Promise<[Filter[], DeleteOptions] | void>
 }
@@ -424,7 +428,7 @@ type AfterSuccess = {
   returns: DeleteResult | void | Promise<DeleteResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type Options = StandardDefineHookOptions & { includeId?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)

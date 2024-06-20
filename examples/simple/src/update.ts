@@ -65,10 +65,11 @@ collection.on("before.updateOne", async ({
   argsOrig,
   invocationSymbol,
   thisArg,
+  _id,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, missing);
+  console.log(args, argsOrig, _id, invocationSymbol, thisArg, missing);
   return args;
 });
 
@@ -79,10 +80,11 @@ collection.on("after.updateOne", async ({
   thisArg,
   resultOrig,
   result,
+  _id,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, result, resultOrig, missing);
+  console.log(args, argsOrig, _id, invocationSymbol, thisArg, result, resultOrig, missing);
   return result;
 });
 
@@ -91,10 +93,11 @@ collection.on("before.updateMany", async ({
   argsOrig,
   invocationSymbol,
   thisArg,
+  _ids,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, missing);
+  console.log(args, argsOrig, _ids, invocationSymbol, thisArg, missing);
   return args;
 });
 
@@ -105,10 +108,11 @@ collection.on("after.updateMany", async ({
   thisArg,
   resultOrig,
   result,
+  _ids,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, invocationSymbol, thisArg, result, resultOrig, missing);
+  console.log(args, argsOrig, _ids, invocationSymbol, thisArg, result, resultOrig, missing);
   return result;
 });
 

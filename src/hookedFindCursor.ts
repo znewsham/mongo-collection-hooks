@@ -17,7 +17,7 @@ FindCursorHookedEventMap<Document>
   }]
 }
 
-interface HookedFindCursorOptions<TSchema> {
+export interface HookedFindCursorOptions<TSchema> {
   transform?: (doc: TSchema) => any,
   events: PartialCallbackMap<
     keyof FindCursorHookedEventMap<TSchema>,
