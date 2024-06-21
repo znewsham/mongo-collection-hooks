@@ -12,19 +12,9 @@ import type{
   AggregationCursor,
   FindCursor,
   InferIdType,
-  ObjectId,
   DeleteResult,
   InsertOneResult,
-  EstimatedDocumentCountOptions,
-  CountDocumentsOptions,
-  FindOneAndDeleteOptions,
   ModifyResult,
-  FindOneAndUpdateOptions,
-  MongoBulkWriteError,
-  WriteConcernError,
-  BulkWriteResult as MongoBulkWriteResult,
-  TopologyVersion,
-  OneOrMore,
   WriteError
 } from 'mongodb';
 import { HookedFindCursor, HookedFindCursorOptions } from "./hookedFindCursor.js";
@@ -38,8 +28,6 @@ import {
   InternalEvents,
   HookedListenerCallback,
   AggregateCursorEventsSet,
-  UpdateCallArgs,
-  ReplaceCallArgs,
   AmendedFindOptions,
   AmendedDistinctOptions,
   AmendedAggregateOptions,
@@ -61,19 +49,14 @@ import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from './utils.js';
-import { ChainedAwaiatableEventEmitter, ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
+import { StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
 import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 import { BulkWriteError, BulkWriteResult } from './bulkError.js';
+import { maybeParallel } from './maybeParallel.js';
 
 function notUndefined<TValue>(value: TValue | undefined): value is TValue {
   return value !== undefined;
-}
-
-function assertReplacementHasId<TSchema>(replacement: WithoutId<TSchema>): asserts replacement is OptionalUnlessRequiredId<TSchema> {
-  if (!(replacement as OptionalUnlessRequiredId<TSchema>)._id) {
-    throw new Error("Can't upsert without a _id");
-  }
 }
 
 type TypedUpdateResult<TSchema extends Document> = {
@@ -658,7 +641,6 @@ export class HookedCollection<
 
   // TODO: rework this entire function - it's henously complicated.
   async #tryCatchDelete<
-    RetT extends Promise<DeleteResult | ModifyResult<TSchema> | WithId<TSchema> | null>,
     BEAD extends CollectionBeforeAfterErrorEventDefinitions<TSchema>,
     T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: CollectionBeforeAfterErrorEventDefinitions<TSchema>["delete"]["before"]["returns"] }) => Promise<TypedDeleteResult<TSchema>>,
     T1 extends (ids?: InferIdType<TSchema>[]) => Promise<TypedDeleteResult<TSchema>>,
@@ -742,126 +724,122 @@ export class HookedCollection<
     const invocationSymbol = Symbol("delete");
     const attemptedIds: InferIdType<TSchema>[] = [];
 
-    // TODO: this isn't right - it wont actually run in order :shrug:
-    // ordered isn't present on findOneAndDeleteOptions
-    const ordered = beforeEmitArgs.args[1]?.["ordered"] !== false;
-    const errors: any = [];
-    let nextItem;
-    while (nextItem = await cursor.next()) {
-      const { _id } = nextItem;
-      if (alwaysAttemptOperation) {
-        attemptedIds.push(nextItem._id);
-      }
-      if (isBeforeGreedy) {
-        beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
-      }
-      let chainedFilter: Filter<TSchema> | typeof SkipDocument = beforeEmitArgs.filter;
-      try {
-        chainedFilter = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-          Events.before.delete,
-          {
-            ...beforeEmitArgs,
-            invocationSymbol,
-            _id,
-            getDocument: () => beforeDocumentCache.getDocument(_id),
-            thisArg: this
-          },
-          "filter",
-          beforeListeners,
-        );
-      }
-      catch (error) {
-        errors.push(error);
-        if (ordered) {
-          break;
+    const ordered = (beforeEmitArgs.args.slice(-1)[0] as AmendedDeleteOptions | undefined)?.ordered !== false;
+    const errors = await maybeParallel(
+      async (nextItem) => {
+        const { _id } = nextItem;
+        if (alwaysAttemptOperation) {
+          attemptedIds.push(nextItem._id);
         }
-        else {
-          continue;
+        if (isBeforeGreedy) {
+          beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
         }
-      }
-
-      let gotResult = false;
-      try {
-        let partialResult = await perDocFn({
-          _id,
-          beforeHooksResult: chainedFilter,
-          invocationSymbol
-        });
-        if (chainedFilter === SkipDocument) {
-          continue;
+        let chainedFilter: Filter<TSchema> | typeof SkipDocument = beforeEmitArgs.filter;
+        try {
+          chainedFilter = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+            Events.before.delete,
+            {
+              ...beforeEmitArgs,
+              invocationSymbol,
+              _id,
+              getDocument: () => beforeDocumentCache.getDocument(_id),
+              thisArg: this
+            },
+            "filter",
+            beforeListeners,
+          );
         }
-        gotResult = true;
-        const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-          Events.afterSuccess.delete,
-          // I'm not sure how to do this cleanly
-          // the goal was to enforce type checking of caller + result between delete<one|many> and findOneAndDelete
-          // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
-          // @ts-expect-error
-          {
-            ...beforeEmitArgs,
-            invocationSymbol,
-            previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
-            _id,
-            thisArg: this,
-            result: partialResult.result,
-          },
-          "result",
-          afterListeners
-        );
-        if (chainedResult !== undefined) {
-          partialResult.result = chainedResult;
+        catch (error) {
+          return {
+            type: ordered ? "Break" : "Continue",
+            error
+          };
         }
 
-        // things get super messy here. deleteOne and deleteMany perDoc return a deleteOne result
-        // in the case of deleteMany this needs to be accumulated.
-        // findOneAndDelete returns a projected doc, a ModifyResult or null
-        if (partialResult.type === "DeleteResult") {
-          if (partialResult.result.acknowledged) {
-            // @ts-expect-error TODO: why does this not work, but almost identical code in #tryCatchUpdate does - result *WILL* be defined and the correct shape because only findOneAndDelete can set it to anything other than DeleteResult
-            result.acknowledged = true;
+        let gotResult = false;
+        try {
+          let partialResult = await perDocFn({
+            _id,
+            beforeHooksResult: chainedFilter,
+            invocationSymbol
+          });
+          if (chainedFilter === SkipDocument) {
+            return {
+              type: "Continue"
+            };
           }
-          if (partialResult.result.deletedCount) {
-            // @ts-expect-error TODO: why does this not work, but almost identical code in #tryCatchUpdate does - result *WILL* be defined and the correct shape because only findOneAndDelete can set it to anything other than DeleteResult
-            result.deletedCount += partialResult.result.deletedCount;
+          gotResult = true;
+          const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+            Events.afterSuccess.delete,
+            // I'm not sure how to do this cleanly
+            // the goal was to enforce type checking of caller + result between delete<one|many> and findOneAndDelete
+            // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
+            // @ts-expect-error
+            {
+              ...beforeEmitArgs,
+              invocationSymbol,
+              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
+              _id,
+              thisArg: this,
+              result: partialResult.result,
+            },
+            "result",
+            afterListeners
+          );
+          if (chainedResult !== undefined) {
+            partialResult.result = chainedResult;
           }
-        }
-        else {
-          result = partialResult.result;
-        }
-        continue;
-      }
-      catch (e) {
-        if (gotResult) {
-          errors.push(e);
-          if (ordered) {
-            break;
+
+          // things get super messy here. deleteOne and deleteMany perDoc return a deleteOne result
+          // in the case of deleteMany this needs to be accumulated.
+          // findOneAndDelete returns a projected doc, a ModifyResult or null
+          if (partialResult.type === "DeleteResult") {
+            if (partialResult.result.acknowledged) {
+              // @ts-expect-error TODO: why does this not work, but almost identical code in #tryCatchUpdate does - result *WILL* be defined and the correct shape because only findOneAndDelete can set it to anything other than DeleteResult
+              result.acknowledged = true;
+            }
+            if (partialResult.result.deletedCount) {
+              // @ts-expect-error TODO: why does this not work, but almost identical code in #tryCatchUpdate does - result *WILL* be defined and the correct shape because only findOneAndDelete can set it to anything other than DeleteResult
+              result.deletedCount += partialResult.result.deletedCount;
+            }
           }
           else {
-            continue;
+            result = partialResult.result;
           }
+          return {
+            type: "Continue"
+          };
         }
-        await this.#ee.callAllAwaitableInParallel(
-          {
-            ...beforeEmitArgs,
-            invocationSymbol,
-            previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
-            thisArg: this,
-            _id,
-            error: e,
-          },
-          invocationOptions,
-          Events.afterError.delete,
-          Events.after.delete
-        );
-        errors.push(e);
-        if (ordered) {
-          break;
+        catch (e) {
+          if (gotResult) {
+            return {
+              type: ordered ? "Break" : "Continue",
+              error: e
+            };
+          }
+          await this.#ee.callAllAwaitableInParallel(
+            {
+              ...beforeEmitArgs,
+              invocationSymbol,
+              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
+              thisArg: this,
+              _id,
+              error: e,
+            },
+            invocationOptions,
+            Events.afterError.delete,
+            Events.after.delete
+          );
+          return {
+            type: ordered ? "Break" : "Continue",
+            error: e
+          };
         }
-        else {
-          continue;
-        }
-      }
-    }
+      },
+      cursor,
+      ordered,
+      (beforeEmitArgs.args?.slice(-1)[0] as AmendedDeleteOptions | undefined)?.hookBatchSize
+    );
     if (errors.length && limit === 1) {
       throw errors[0];
     }
@@ -874,7 +852,7 @@ export class HookedCollection<
           upsertedCount: 0,
           matchedCount: 0,
           modifiedCount: 0,
-          // @ts-expect-error
+          // NOT @ts-expect-error - even though it should be, result could in theory be ModifyResult or Document - but not when limit=1
           deletedCount: result?.deletedCount,
           upsertedIds: {},
           insertedIds: {}
@@ -1089,106 +1067,121 @@ export class HookedCollection<
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed);
     const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false);
     const invocationSymbol = Symbol("update");
-    const errors: any = [];
-    do {
-      if (alwaysAttemptOperation) {
-        attemptedIds.push(nextItem._id);
-      }
-      if (isCacheWarmed) {
-        beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
-      }
-      const { _id } = nextItem;
-      let chainedArgs;
-      try {
-        chainedArgs = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-          Events.before.update,
-          {
-            ...beforeEmitArgs,
-            invocationSymbol,
-            _id,
-            getDocument: () => beforeDocumentCache.getDocument(_id),
-            thisArg: this
-          },
-          "filterMutator",
-          beforeListeners,
-        );
-      }
-      catch (error) {
-        errors.push(error);
-        break;
-      }
-      let gotResult = false;
-      try {
-        let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
-        gotResult = true;
-        if (chainedArgs !== SkipDocument) {
-          const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-            Events.afterSuccess.update,
-            // I'm not sure how to do this cleanly
-            // the goal was to enforce type checking of caller + result between update<one|many>, replaceOne and findOneAnd*
-            // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
-            // @ts-expect-error
+
+    const ordered = (beforeEmitArgs.args.slice(-1)[0] as AmendedUpdateOptions | undefined)?.ordered !== false;
+    const errors = await maybeParallel(
+      async (nextItem) => {
+        if (alwaysAttemptOperation) {
+          attemptedIds.push(nextItem._id);
+        }
+        if (isCacheWarmed) {
+          beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
+        }
+        const { _id } = nextItem;
+        let chainedArgs: typeof beforeEmitArgs.filterMutator | typeof SkipDocument = beforeEmitArgs.filterMutator;
+        try {
+          chainedArgs = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+            Events.before.update,
             {
               ...beforeEmitArgs,
-              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
+              invocationSymbol,
+              _id,
+              getDocument: () => beforeDocumentCache.getDocument(_id),
+              thisArg: this
+            },
+            "filterMutator",
+            beforeListeners,
+          );
+        }
+        catch (error) {
+          return {
+            type: ordered ? "Break" : "Continue",
+            error
+          }
+        }
+        let gotResult = false;
+        try {
+          let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
+          gotResult = true;
+          if (chainedArgs !== SkipDocument) {
+            const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+              Events.afterSuccess.update,
+              // I'm not sure how to do this cleanly
+              // the goal was to enforce type checking of caller + result between update<one|many>, replaceOne and findOneAnd*
+              // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
+              // @ts-expect-error
+              {
+                ...beforeEmitArgs,
+                previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
+                invocationSymbol,
+                _id,
+                getDocument: () => afterDocumentCache.getDocument(_id),
+                thisArg: this,
+                result: partialResult.result,
+              },
+              "result",
+              afterListeners,
+            );
+            if (chainedResult !== undefined) {
+              partialResult.result = chainedResult;
+            }
+          }
+          // A few interesting facts:
+          // 1. All calls in a single request come from one place
+          // 1.a. so all the partialResults should be the same type
+          // 2. Only updateMany has multiple partialResults - it's result type is UpdateResult
+          // 3. So everything else can just reassign
+          if (partialResult.type === "UpdateResult") {
+            const res = result as UpdateResult<TSchema>;
+            if (partialResult.result.acknowledged) {
+              res.acknowledged = true;
+            }
+            if (partialResult.result.matchedCount) {
+              res.matchedCount += partialResult.result.matchedCount;
+            }
+            if (partialResult.result.modifiedCount) {
+              res.modifiedCount += partialResult.result.modifiedCount;
+            }
+          }
+          else if (partialResult.type === "ModifyResult" || partialResult.type === "Document") {
+            result = partialResult.result;
+          }
+        }
+        catch (e) {
+          if (gotResult) {
+            return {
+              type: ordered ? "Break" : "Continue",
+              error: e
+            }
+          }
+          await this.#ee.callAllAwaitableInParallel(
+            {
+              ...beforeEmitArgs,
               invocationSymbol,
               _id,
               getDocument: () => afterDocumentCache.getDocument(_id),
+              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
               thisArg: this,
-              result: partialResult.result,
+              error: e,
             },
-            "result",
-            afterListeners,
+            invocationOptions,
+            Events.afterError.update,
+            Events.after.update
           );
-          if (chainedResult !== undefined) {
-            partialResult.result = chainedResult;
+          return {
+            type: ordered ? "Break" : "Continue",
+            error: e
           }
         }
-        // A few interesting facts:
-        // 1. All calls in a single request come from one place
-        // 1.a. so all the partialResults should be the same type
-        // 2. Only updateMany has multiple partialResults - it's result type is UpdateResult
-        // 3. So everything else can just reassign
-        if (partialResult.type === "UpdateResult") {
-          const res = result as UpdateResult<TSchema>;
-          if (partialResult.result.acknowledged) {
-            res.acknowledged = true;
-          }
-          if (partialResult.result.matchedCount) {
-            res.matchedCount += partialResult.result.matchedCount;
-          }
-          if (partialResult.result.modifiedCount) {
-            res.modifiedCount += partialResult.result.modifiedCount;
-          }
-        }
-        else if (partialResult.type === "ModifyResult" || partialResult.type === "Document") {
-          result = partialResult.result;
-        }
-      }
-      catch (e) {
-        if (gotResult) {
-          errors.push(e);
-          break;
-        }
-        await this.#ee.callAllAwaitableInParallel(
-          {
-            ...beforeEmitArgs,
-            invocationSymbol,
-            _id,
-            getDocument: () => afterDocumentCache.getDocument(_id),
-            previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
-            thisArg: this,
-            error: e,
-          },
-          invocationOptions,
-          Events.afterError.update,
-          Events.after.update
-        );
-        errors.push(e);
-        break;
-      }
-      nextItem = await cursor.next();
-    } while (nextItem);
+        return {
+          type: "Continue"
+        };
+      },
+      cursor,
+      ordered,
+      (beforeEmitArgs.args?.slice(-1)[0] as AmendedUpdateOptions | undefined)?.hookBatchSize,
+      nextItem
+    );
     if (errors.length && limit === 1) {
       throw errors[0];
     }

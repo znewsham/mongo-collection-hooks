@@ -39,7 +39,6 @@ export class BulkWriteResult implements Omit<MongoBulkWriteResult, "result">, Bu
     this.upsertedCount = bulkResult.upsertedCount;
     this.upsertedIds = bulkResult.upsertedIds;
     this.#writeErrors = writeErrors;
-    this.result = bulkResult;
   }
 
   get nInserted() {

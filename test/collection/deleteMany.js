@@ -5,6 +5,7 @@ import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 import { deleteTests } from "./delete.js";
 import { assertImplements } from "../helpers.js";
 import { MongoBulkWriteError } from "mongodb";
+import { setTimeout } from "node:timers/promises";
 
 
 export function defineDeleteMany() {
@@ -217,6 +218,65 @@ export function defineDeleteMany() {
       );
 
       assert.strictEqual(deleteMock.mock.callCount(), 2, "Should have called delete twice");
+    });
+
+    it("when ordered=undefined deletes should run serially", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.delete", mockBefore);
+      await hookedCollection.deleteMany({});
+      assert.strictEqual(mockBefore.mock.callCount(), 2, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] > 50, "Should have a substantial difference in hook time");
+    });
+
+    it("when ordered=true deletes should run serially", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.delete", mockBefore);
+      await hookedCollection.deleteMany({}, { ordered: true });
+      assert.strictEqual(mockBefore.mock.callCount(), 2, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] > 50, "Should have a substantial difference in hook time");
+    });
+
+    it("when ordered=false deletes should run in parallel", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.delete", mockBefore);
+      await hookedCollection.deleteMany({}, { ordered: false });
+      assert.strictEqual(mockBefore.mock.callCount(), 2, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] < 50, "Should NOT have a substantial difference in hook time");
+    });
+
+    it("when ordered=false deletes should in a batch run in parallel, between batches run in parallel", async () => {
+      const { hookedCollection } = getHookedCollection([
+        { _id: "test" },
+        { _id: "test2" },
+        { _id: "test3" },
+        { _id: "test4" }
+      ]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.delete", mockBefore);
+      await hookedCollection.deleteMany({}, { ordered: false, hookBatchSize: 2 });
+      assert.strictEqual(mockBefore.mock.callCount(), 4, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] < 50, "Should NOT have a substantial difference in hook time");
+      assert.ok(beforeHookTimes[2] - beforeHookTimes[1] > 50, "Should have a substantial difference in hook time");
+      assert.ok(beforeHookTimes[3] - beforeHookTimes[2] < 50, "Should NOT have a substantial difference in hook time");
     });
 
     deleteTests("deleteMany");

@@ -11,11 +11,14 @@ export type StandardDefineHookOptions = {
 /**
  * @external
  */
-export type StandardInvokeHookOptions<EM extends ChainedCallbackEventMap, K extends keyof EM = keyof EM> = {
+export type StandardInvokeHookOptions<
+  EM extends ChainedCallbackEventMap,
+  K extends keyof EM = keyof EM
+> = {
   /** Filter the hooks to only run those which include one of these tags */
   includeTags?: string[],
   /** Filter the hooks to only run those which don't include one of these tags */
-  excludeTags?: string[]
+  excludeTags?: string[],
   /** A function to run to determine whether a hook should be ran or not */
   includeHook?: <HK extends K>(hookName: HK, hook: ChainedListenerCallback<HK, EM>, options?: EM[K]["options"]) => boolean
 }

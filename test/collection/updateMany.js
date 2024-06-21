@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 import { assertImplements } from "../helpers.js";
 import { updateTests } from "./update.js";
+import { setTimeout } from "node:timers/promises";
 
 
 export function defineUpdateMany() {
@@ -215,10 +216,10 @@ export function defineUpdateMany() {
       );
     });
 
-    it("if one delete hook throws an error, we should throw a MongoBulkWriteError", async () => {
+    it("if one update hook throws an error, we should throw a MongoBulkWriteError", async () => {
       const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
       let first = true;
-      hookedCollection.on("before.delete", () => {
+      hookedCollection.on("before.update", () => {
         if (first) {
           first = false;
           return;
@@ -228,13 +229,13 @@ export function defineUpdateMany() {
 
       await assert.rejects(
         async () => {
-          await hookedCollection.deleteMany({});
+          await hookedCollection.updateMany({}, { $set: { a: 1 } });
         },
         (thrown) => {
           if (!(thrown instanceof BulkWriteError)) {
             return false;
           }
-          return thrown.deletedCount === 1;
+          return thrown.modifiedCount === 1;
         },
         "It rejected correctly"
       );
@@ -308,6 +309,65 @@ export function defineUpdateMany() {
       );
 
       assert.strictEqual(updateMock.mock.callCount(), 2, "Should have called update twice");
+    });
+
+    it("when ordered=undefined updates should run serially", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.update", mockBefore);
+      await hookedCollection.updateMany({}, { $set: { a: 1 } });
+      assert.strictEqual(mockBefore.mock.callCount(), 2, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] > 50, "Should have a substantial difference in hook time");
+    });
+
+    it("when ordered=true updates should run serially", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.update", mockBefore);
+      await hookedCollection.updateMany({}, { $set: { a: 1 } }, { ordered: true });
+      assert.strictEqual(mockBefore.mock.callCount(), 2, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] > 50, "Should have a substantial difference in hook time");
+    });
+
+    it("when ordered=false updates should run in parallel", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.update", mockBefore);
+      await hookedCollection.updateMany({}, { $set: { a: 1 } }, { ordered: false });
+      assert.strictEqual(mockBefore.mock.callCount(), 2, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] < 50, "Should NOT have a substantial difference in hook time");
+    });
+
+    it("when ordered=false updates should in a batch run in parallel, between batches run in parallel", async () => {
+      const { hookedCollection } = getHookedCollection([
+        { _id: "test" },
+        { _id: "test2" },
+        { _id: "test3" },
+        { _id: "test4" }
+      ]);
+      const beforeHookTimes = [];
+      const mockBefore = mock.fn(async () => {
+        beforeHookTimes.push(performance.now());
+        await setTimeout(100);
+      });
+      hookedCollection.on("before.update", mockBefore);
+      await hookedCollection.updateMany({}, { $set: { a: 1 } }, { ordered: false, hookBatchSize: 2 });
+      assert.strictEqual(mockBefore.mock.callCount(), 4, "Should have been called twice");
+      assert.ok(beforeHookTimes[1] - beforeHookTimes[0] < 50, "Should NOT have a substantial difference in hook time");
+      assert.ok(beforeHookTimes[2] - beforeHookTimes[1] > 50, "Should have a substantial difference in hook time");
+      assert.ok(beforeHookTimes[3] - beforeHookTimes[2] < 50, "Should NOT have a substantial difference in hook time");
     });
     updateTests("updateMany");
   });

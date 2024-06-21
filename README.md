@@ -176,12 +176,12 @@ type After = {
   returns: UpdateResult | ModifyResult<TSchema> | Document | void | Promise<UpdateResult | ModifyResult<TSchema> | Document | void>
 }
 
-type BeforeOptions = StandardDefineHookOptions & {
+type DefineBeforeHookOptions = StandardDefineHookOptions & {
   projection?: Document | (({ argsOrig, thisArg } : Before["callArg"]["argsOrig"], thisArg: HookedCollection }): Document
   shouldRun?: ({ argsOrig, thisArg }): { argsOrig: Before["callArg"]["argsOrig"], thisArg: HookedCollection }): boolean | Promise<boolean>
 }
 
-type AfterOptions = BeforeOptions & {
+type DefineAfterHookOptions = DefineBeforeHookOptions & {
   fetchPrevious?: boolean
   fetchPreviousProjection?: Document | (({ argsOrig, thisArg } : Before["callArg"]["argsOrig"], thisArg: HookedCollection }): Document
 }
@@ -222,12 +222,12 @@ type After = {
   returns: DeleteResult | ModifyResult<TSchema> | Document | void | Promise<DeleteResult | ModifyResult<TSchema> | Document | void>
 }
 
-type BeforeOptions = StandardDefineHookOptions & {
+type DefineBeforeHookOptions = StandardDefineHookOptions & {
   projection?: Document | (({ argsOrig, thisArg } : Before["callArg"]["argsOrig"], thisArg: HookedCollection }): Document
   shouldRun?: ({ argsOrig, thisArg }): { argsOrig: Before["callArg"]["argsOrig"], thisArg: HookedCollection }): boolean | Promise<boolean>
 }
 
-type AfterOptions = BeforeOptions & {
+type DefineAfterHookOptions = DefineBeforeHookOptions & {
   fetchPrevious?: boolean
   fetchPreviousProjection?: boolean
 }
@@ -259,7 +259,7 @@ type AfterSuccess = {
   returns: InsertOneResult | void | Promise<InsertOneResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 
 collection.on("before.insert", ({
   args,
@@ -288,7 +288,7 @@ type AfterSuccess = {
   returns: Document | null | void | Promise<Document | null | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 
 
 collection.on("before.findOne", async ({
@@ -329,7 +329,7 @@ type AfterSuccess = {
   returns: InsertResult | void | Promise<InsertResult | void>
 }
 
-type Options = StandardDefineHookOptions & { includeId?: boolean }
+type DefineHookOptions = StandardDefineHookOptions & { includeId?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -362,7 +362,7 @@ type AfterSuccess = {
   returns: InsertResult | void | Promise<InsertResult | void>
 }
 
-type Options = StandardDefineHookOptions & { includeIds?: boolean }
+type DefineHookOptions = StandardDefineHookOptions & { includeIds?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -395,7 +395,7 @@ type AfterSuccess = {
   returns: DeleteResult | void | Promise<DeleteResult | void>
 }
 
-type Options = StandardDefineHookOptions & { includeId?: boolean }
+type DefineHookOptions = StandardDefineHookOptions & { includeId?: boolean }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -428,7 +428,8 @@ type AfterSuccess = {
   returns: DeleteResult | void | Promise<DeleteResult | void>
 }
 
-type Options = StandardDefineHookOptions & { includeId?: boolean }
+type DefineHookOptions = StandardDefineHookOptions & { includeId?: boolean }
+type CallOptions = DeleteOptions & StandardInvokeHookOptions & { ordered?: boolean, hookBatchSize?: number }
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -460,7 +461,7 @@ type AfterSuccess = {
   returns: UpdateResult | void | Promise<UpdateResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -496,7 +497,9 @@ type AfterSuccess = {
   returns: UpdateResult | void | Promise<UpdateResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
+type CallOptions = UpdateOptions & StandardInvokeHookOptions & { ordered?: boolean, hookBatchSize?: number }
+
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -532,7 +535,7 @@ type AfterSuccess = {
   returns: UpdateResult | void | Promise<UpdateResult | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -567,7 +570,7 @@ type AfterSuccess = {
   returns: ModifyResult | Document | null | void | Promise<ModifyResult | Document | null | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -602,7 +605,7 @@ type AfterSuccess = {
   returns: ModifyResult | Document | null | void | Promise<ModifyResult | Document | null | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -638,7 +641,7 @@ type AfterSuccess = {
   returns: ModifyResult | Document | null | void | Promise<ModifyResult | Document | null | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 #### Invocation order [See note](#a-note-about-hook-order)
@@ -675,7 +678,7 @@ type AfterSuccess = {
   returns: Document[] | void | Promise<Document[] | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 ### find.cursor.count
@@ -699,7 +702,7 @@ type AfterSuccess = {
   returns: number | void | Promise<number | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 ### find.cursor.next
@@ -723,7 +726,7 @@ type AfterSuccess = {
   returns: Document | void | Promise<Document | void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 ### find.cursor.forEach
@@ -747,7 +750,7 @@ type AfterSuccess = {
   returns: void | Promise<void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 ### find.cursor.execute
@@ -772,7 +775,7 @@ type AfterSuccess = {
   returns: void | Promise<void>
 }
 
-type Options = StandardDefineHookOptions
+type DefineHookOptions = StandardDefineHookOptions
 ```
 
 ### TODO - all the others

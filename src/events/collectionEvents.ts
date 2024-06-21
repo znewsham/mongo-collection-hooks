@@ -263,6 +263,13 @@ type PreviousDocument = {
   previousDocument?: Document | undefined | null
 }
 
+type MaybeOrderedBatch = {
+  /** Whether to run the operations in parallel or serially. For operations that support this option, it will be sent to the DB too, otherwise only meaningful if there are individual hooks (e.g., after.insert for an insertMany) */
+  ordered?: boolean
+  /** If ordered: false, how many operations to run in parallel (defaults to 1000) - there is a potential memory cost to running too many in parallel, but a wallclock cost to running them all serially */
+  hookBatchSize?: number
+}
+
 type CollectionBeforeEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "before", "before">
 type CollectionAfterSuccessEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "success", "success">
 type CollectionAfterErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
@@ -288,8 +295,8 @@ export type CollectionHookedEventMap<TSchema extends Document> = CollectionCallb
 ;
 export type AmendedInsertOneOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertOne"> & InsertOneOptions;
 export type AmendedBulkWriteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertMany"> & BulkWriteOptions & AlwaysAttemptOperation;
-export type AmendedUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "updateOne" | "updateMany"> & UpdateOptions & AlwaysAttemptOperation;
-export type AmendedDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "deleteOne" | "deleteMany"> & DeleteOptions & AlwaysAttemptOperation;
+export type AmendedUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "updateOne" | "updateMany"> & UpdateOptions & AlwaysAttemptOperation & MaybeOrderedBatch;
+export type AmendedDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "deleteOne" | "deleteMany"> & DeleteOptions & AlwaysAttemptOperation & MaybeOrderedBatch;
 export type AmendedAggregateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "aggregate"> & AggregateOptions;
 export type AmendedReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "replaceOne"> & ReplaceOptions & AlwaysAttemptOperation;
 export type AmendedDistinctOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "distinct"> & DistinctOptions;
