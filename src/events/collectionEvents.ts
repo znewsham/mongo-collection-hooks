@@ -38,9 +38,9 @@ import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorE
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js";
 import { BeforeAfterErrorSharedEventDefinitions, SharedCallbackArgsAndReturn } from "./sharedEvents.js";
 
-type WithDocumentDefineHookOptions<TSchema extends Document> = {
+type WithDocumentDefineHookOptions<TSchema extends Document, ARGS> = {
   /** The projection used when you call `.fullDocument()` it will be combined with the `projection` of every other hook being ran */
-  projection?: NestedProjectionOfTSchema<TSchema>
+  projection?: NestedProjectionOfTSchema<TSchema> | (({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema> }) => NestedProjectionOfTSchema<TSchema>)
 }
 
 type AllowGreedyDefineHookOptions = {
@@ -48,12 +48,12 @@ type AllowGreedyDefineHookOptions = {
   greedyFetch?: boolean
 }
 
-type WithPreviousDocumentDefineHookOptions<TSchema extends Document> = {
+type WithPreviousDocumentDefineHookOptions<TSchema extends Document, ARGS> = {
   /** fetch the document before updating */
   fetchPrevious?: boolean,
 
   /** The projection used to populate the previousDoc it will be combined with the `fetchPreviousProjection` of every other hook being ran */
-  fetchPreviousProjection?: NestedProjectionOfTSchema<TSchema>
+  fetchPreviousProjection?: NestedProjectionOfTSchema<TSchema> | (({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema> }) => NestedProjectionOfTSchema<TSchema>)
 }
 
 export type CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema extends Document> = BeforeAfterErrorCollectionEventDefinitions<TSchema>;
@@ -64,30 +64,29 @@ export type CollectionBeforeAfterErrorEventDefinitions<TSchema extends Document>
   & BeforeAfterErrorGenericCursorEventDefinitions<TSchema>
   & BeforeAfterErrorSharedEventDefinitions<TSchema>;
 
-type UpdateDeleteDefineHookOptions<TSchema extends Document, K extends "update" | "delete"> = {
-  /** A function to indicate whether the hook should run or not. Mostly useful for before update hooks, or after update using fetchPrevious. These hooks will run *before* we fetch the document. */
-  shouldRun?(...args: CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema>[K]["before"]["emitArgs"]["args"]): Promise<boolean> | boolean
-};
+type ShouldRun<TSchema extends Document, ARGS> = {
+  shouldRun?({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema>}): Promise<boolean> | boolean
+}
 
 type BeforeUpdateDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-  & UpdateDeleteDefineHookOptions<TSchema, "update">
-  & WithDocumentDefineHookOptions<TSchema>
+  & ShouldRun<TSchema, UpdateCallArgs<TSchema>>
+  & WithDocumentDefineHookOptions<TSchema, UpdateCallArgs<TSchema>>
 
 type AfterUpdateDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-  & UpdateDeleteDefineHookOptions<TSchema, "update">
-  & WithDocumentDefineHookOptions<TSchema>
-  & WithPreviousDocumentDefineHookOptions<TSchema>
+& ShouldRun<TSchema, UpdateCallArgs<TSchema>>
+  & WithDocumentDefineHookOptions<TSchema, UpdateCallArgs<TSchema>>
+  & WithPreviousDocumentDefineHookOptions<TSchema, UpdateCallArgs<TSchema>>
 
 type BeforeDeleteDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-  & UpdateDeleteDefineHookOptions<TSchema, "delete">
-  & WithDocumentDefineHookOptions<TSchema>
+& ShouldRun<TSchema, DeleteCallArgs<TSchema>>
+  & WithDocumentDefineHookOptions<TSchema, DeleteCallArgs<TSchema>>
 
 type AfterDeleteDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-  & UpdateDeleteDefineHookOptions<TSchema, "delete">
-  & WithPreviousDocumentDefineHookOptions<TSchema>
+& ShouldRun<TSchema, DeleteCallArgs<TSchema>>
+  & WithPreviousDocumentDefineHookOptions<TSchema, DeleteCallArgs<TSchema>>
 
 type AfterInsertOptions<TSchema extends Document> = StandardDefineHookOptions
-  & WithDocumentDefineHookOptions<TSchema>
+  & WithDocumentDefineHookOptions<TSchema, DeleteCallArgs<TSchema>>
 
 type BeforeTopLevelEmitArgs<O extends CommonDefinition> = {
   emitArgs:
@@ -224,11 +223,11 @@ type DeleteCommonEmitArgs<TSchema extends Document> = {
     & ArgsOrig<DeleteCommon<TSchema>>
     & InvocationSymbol
     & ParentInvocationSymbol
-    & PreviousDocument
 };
 
 type DeleteCommonResultEmitArgs<TSchema extends Document> = {
   emitArgs: Omit<DeleteCommonEmitArgs<TSchema>["emitArgs"], "caller">
+    & PreviousDocument
     & (
       { caller: "findOneAndDelete", result: WithId<TSchema> | ModifyResult<TSchema> | null }
       | { caller: "deleteOne" | "deleteMany", result: DeleteResult }
@@ -242,6 +241,7 @@ type DeleteCommonErrorEmitArgs<TSchema extends Document> = {
 
 type DeleteCommonErrorOrResultEmitArgs<TSchema extends Document> = {
   emitArgs: Omit<DeleteCommonEmitArgs<TSchema>["emitArgs"], "caller">
+    & PreviousDocument
     & {
       /** The error caused by the action. Mutually exclusive with result */
       error?: any
@@ -286,21 +286,25 @@ export type CollectionHookedEventMap<TSchema extends Document> = CollectionCallb
   & SharedCallbackArgsAndReturn<TSchema>
 
 ;
-
 export type AmendedInsertOneOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertOne"> & InsertOneOptions;
-export type AmendedBulkWriteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertMany"> & BulkWriteOptions;
-export type AmendedUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "updateOne" | "updateMany"> & UpdateOptions;
-export type AmendedDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "deleteOne" | "deleteMany"> & DeleteOptions;
+export type AmendedBulkWriteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertMany"> & BulkWriteOptions & AlwaysAttemptOperation;
+export type AmendedUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "updateOne" | "updateMany"> & UpdateOptions & AlwaysAttemptOperation;
+export type AmendedDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "deleteOne" | "deleteMany"> & DeleteOptions & AlwaysAttemptOperation;
 export type AmendedAggregateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "aggregate"> & AggregateOptions;
-export type AmendedReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "replaceOne"> & ReplaceOptions;
+export type AmendedReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "replaceOne"> & ReplaceOptions & AlwaysAttemptOperation;
 export type AmendedDistinctOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "distinct"> & DistinctOptions;
 export type AmendedFindOptions<TSchema extends Document, caller extends "before.find" | "before.findOne" = "before.find" | "before.findOne", HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, caller> & FindOptions<TSchema>
 export type AmendedEstimatedDocumentCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "estimatedDocumentCount"> & EstimatedDocumentCountOptions;
 export type AmendedCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "count"> & CountOptions;
 export type AmendedCountDocumentsOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "countDocuments"> & CountDocumentsOptions;
-export type AmendedFindOneAndDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndDelete"> & FindOneAndDeleteOptions;
-export type AmendedFindOneAndUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndUpdate"> & FindOneAndUpdateOptions;
-export type AmendedFindOneAndReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndReplace"> & FindOneAndReplaceOptions;
+export type AmendedFindOneAndDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndDelete"> & FindOneAndDeleteOptions & AlwaysAttemptOperation;
+export type AmendedFindOneAndUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndUpdate"> & FindOneAndUpdateOptions & AlwaysAttemptOperation;
+export type AmendedFindOneAndReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndReplace"> & FindOneAndReplaceOptions & AlwaysAttemptOperation;
+
+type AlwaysAttemptOperation = {
+  /** In the case of underlying implementations with a partial view (e.g., client side) always attempt the underlying operation, omitting those explicitly attempted. Only useful if `update` or `delete` hooks are in use */
+  alwaysAttemptOperation?: boolean
+}
 
 type InsertOneCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>, AmendedInsertOneOptions | undefined];
 type InsertManyCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>[], AmendedBulkWriteOptions | undefined];
@@ -345,11 +349,12 @@ export type UpsertAndCallerCallArgs<
         : never
 ;
 type TopLevelCall<O extends CommonDefinition & { result: any }> = {
-  before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & Pick<O, "options">,
-  success: ReturnsResult<O> & AfterTopLevelSuccessEmitArgs<O> & Pick<O, "options">,
-  error: NoReturns<O> & AfterTopLevelErrorEmitArgs<O> & Pick<O, "options">,
-  after: ReturnsResult<O> & AfterTopLevelEmitArgs<O> & Pick<O, "options">
-  caller: never
+  before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  success: ReturnsResult<O> & AfterTopLevelSuccessEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  error: NoReturns<O> & AfterTopLevelErrorEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  after: ReturnsResult<O> & AfterTopLevelEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  caller: never,
+  options: O extends { options: StandardDefineHookOptions } ? O["options"] : StandardDefineHookOptions
 };
 
 export type CountCommon<TSchema extends Document> = {
@@ -393,7 +398,8 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   insertOne: TopLevelCall<{
     args: InsertOneCallArgs<TSchema>,
     thisArg: HookedCollectionInterface<TSchema>,
-    result: InsertOneResult<TSchema>
+    result: InsertOneResult<TSchema>,
+    options: StandardDefineHookOptions
   }>
   insertMany: TopLevelCall<{
     args: InsertManyCallArgs<TSchema>,
@@ -411,7 +417,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
   delete: {
     before: ReturnsNamedEmitArg<
       Pick<DeleteCommon<TSchema>, "beforeHookReturns">
-      & DeleteCommonEmitArgs<TSchema>,
+      & { emitArgs: DeleteCommonEmitArgs<TSchema>["emitArgs"]& FullDocument },
       "filter"
     >
     & { options: BeforeDeleteDefineHookOptions<TSchema> & AllowGreedyDefineHookOptions, caller: DeleteCommon<TSchema>["caller"] },

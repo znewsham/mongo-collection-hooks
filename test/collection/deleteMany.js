@@ -1,9 +1,10 @@
-import { SkipDocument } from "mongo-collection-hooks";
+import { BulkWriteError, SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 import { deleteTests } from "./delete.js";
 import { assertImplements } from "../helpers.js";
+import { MongoBulkWriteError } from "mongodb";
 
 
 export function defineDeleteMany() {
@@ -89,6 +90,133 @@ export function defineDeleteMany() {
         /BAD CALL/,
         "It rejected correctly"
       );
+    });
+
+    it("if one delete hook throws an error, we should throw a MongoBulkWriteError", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.delete", () => {
+        if (first) {
+          first = false;
+          return;
+        }
+        throw new Error("Bad Error");
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.deleteMany({});
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.deletedCount === 1;
+        },
+        "It rejected correctly"
+      );
+    });
+
+    it("if first delete throws an error, we should throw a MongoBulkWriteError", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.delete", () => {
+
+      });
+
+      const deleteMock = mock.method(fakeCollection, "deleteOne", () => {
+        if (first) {
+          first = false;
+          throw new Error("bad error");
+        }
+        return {
+          ok: 1,
+          deletedCount: 1
+        };
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.deleteMany({});
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.deletedCount === 0;
+        },
+        "It rejected correctly"
+      );
+
+      assert.strictEqual(deleteMock.mock.callCount(), 1, "Should have called delete once");
+    });
+
+    it("if second delete throws an error, we should throw a MongoBulkWriteError", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.delete", () => {
+
+      });
+
+      const deleteMock = mock.method(fakeCollection, "deleteOne", () => {
+        if (first) {
+          first = false;
+          return {
+            ok: 1,
+            deletedCount: 1
+          };
+        }
+        throw new Error("bad error");
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.deleteMany({});
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.deletedCount === 1;
+        },
+        "It rejected correctly"
+      );
+
+      assert.strictEqual(deleteMock.mock.callCount(), 2, "Should have called delete twice");
+    });
+
+    it("when ordered=false if one delete throws an error, we should throw a MongoBulkWriteError but continue.", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.delete", () => {
+
+      });
+
+      const deleteMock = mock.method(fakeCollection, "deleteOne", () => {
+        if (first) {
+          first = false;
+          throw new Error("bad error");
+        }
+        return {
+          ok: 1,
+          deletedCount: 1
+        };
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.deleteMany({}, { ordered: false });
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.deletedCount === 1;
+        },
+        "It rejected correctly"
+      );
+
+      assert.strictEqual(deleteMock.mock.callCount(), 2, "Should have called delete twice");
     });
 
     deleteTests("deleteMany");

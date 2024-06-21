@@ -1,4 +1,4 @@
-import { SkipDocument } from "mongo-collection-hooks";
+import { BulkWriteError, SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
@@ -189,7 +189,6 @@ export function defineUpdateMany() {
       const mockAfter = mock.fn();
       hookedCollection.on("before.updateMany", mockBefore, { includeIds: true });
       hookedCollection.on("after.updateMany.success", mockAfter, { includeIds: true });
-      debugger;
       await hookedCollection.updateMany({}, { $set: { a: 1 } });
       assertImplements(
         mockBefore.mock.calls[0].arguments,
@@ -214,6 +213,101 @@ export function defineUpdateMany() {
         }],
         "after hook is correct"
       );
+    });
+
+    it("if one delete hook throws an error, we should throw a MongoBulkWriteError", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.delete", () => {
+        if (first) {
+          first = false;
+          return;
+        }
+        throw new Error("Bad Error");
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.deleteMany({});
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.deletedCount === 1;
+        },
+        "It rejected correctly"
+      );
+    });
+
+    it("if first update throws an error, we should throw a MongoBulkWriteError", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.update", () => {
+
+      });
+
+      const updateMock = mock.method(fakeCollection, "updateOne", () => {
+        if (first) {
+          first = false;
+          throw new Error("bad error");
+        }
+        return {
+          ok: 1,
+          modifiedCount: 1,
+          matchedCount: 1
+        };
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.updateMany({}, { $set: { a: 1 } });
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.modifiedCount === 0 && thrown.modifiedCount === 0;
+        },
+        "It rejected correctly"
+      );
+
+      assert.strictEqual(updateMock.mock.callCount(), 1, "Should have called update once");
+    });
+
+    it("if second update throws an error, we should throw a MongoBulkWriteError", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      let first = true;
+      hookedCollection.on("before.update", () => {
+
+      });
+
+      const updateMock = mock.method(fakeCollection, "updateOne", () => {
+        if (first) {
+          first = false;
+          return {
+            ok: 1,
+            modifiedCount: 1,
+            matchedCount: 1
+          };
+        }
+        throw new Error("bad error");
+      });
+
+      await assert.rejects(
+        async () => {
+          await hookedCollection.updateMany({}, { $set: { a: 1 } });
+        },
+        (thrown) => {
+          if (!(thrown instanceof BulkWriteError)) {
+            return false;
+          }
+          return thrown.modifiedCount === 1 && thrown.modifiedCount === 1;
+        },
+        "It rejected correctly"
+      );
+
+      assert.strictEqual(updateMock.mock.callCount(), 2, "Should have called update twice");
     });
     updateTests("updateMany");
   });

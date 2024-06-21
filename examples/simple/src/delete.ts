@@ -14,11 +14,17 @@ collection.on("before.delete", async ({
   invocationSymbol,
   parentInvocationSymbol,
   thisArg,
+  _id,
+  getDocument,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, caller, filter, filterOrig, invocationSymbol, parentInvocationSymbol, thisArg, missing);
+  console.log(args, _id, getDocument, argsOrig, caller, filter, filterOrig, invocationSymbol, parentInvocationSymbol, thisArg, missing);
   return args;
+}, {
+  projection() {
+    return { a: 1 };
+  }
 });
 
 collection.on("after.delete", async ({
@@ -31,11 +37,12 @@ collection.on("after.delete", async ({
   thisArg,
   resultOrig,
   result,
+  previousDocument,
   error,
   // @ts-expect-error
   missing
 }) => {
-  console.log(args, argsOrig, caller, filter, invocationSymbol, parentInvocationSymbol, thisArg, result, resultOrig, error, missing);
+  console.log(args, argsOrig, previousDocument, caller, filter, invocationSymbol, parentInvocationSymbol, thisArg, result, resultOrig, error, missing);
   return result;
 }, {
   fetchPrevious: true,

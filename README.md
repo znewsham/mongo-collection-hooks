@@ -177,13 +177,13 @@ type After = {
 }
 
 type BeforeOptions = StandardDefineHookOptions & {
-  projection?: Document
-  shouldRun?: (...args: Before["callArg"]["argsOrig"]): boolean | Promise<boolean>
+  projection?: Document | (({ argsOrig, thisArg } : Before["callArg"]["argsOrig"], thisArg: HookedCollection }): Document
+  shouldRun?: ({ argsOrig, thisArg }): { argsOrig: Before["callArg"]["argsOrig"], thisArg: HookedCollection }): boolean | Promise<boolean>
 }
 
 type AfterOptions = BeforeOptions & {
   fetchPrevious?: boolean
-  fetchPreviousProjection?: boolean
+  fetchPreviousProjection?: Document | (({ argsOrig, thisArg } : Before["callArg"]["argsOrig"], thisArg: HookedCollection }): Document
 }
 ```
 
@@ -223,8 +223,8 @@ type After = {
 }
 
 type BeforeOptions = StandardDefineHookOptions & {
-  projection?: Document
-  shouldRun?: (...args: Before["callArg"]["argsOrig"]): boolean | Promise<boolean>
+  projection?: Document | (({ argsOrig, thisArg } : Before["callArg"]["argsOrig"], thisArg: HookedCollection }): Document
+  shouldRun?: ({ argsOrig, thisArg }): { argsOrig: Before["callArg"]["argsOrig"], thisArg: HookedCollection }): boolean | Promise<boolean>
 }
 
 type AfterOptions = BeforeOptions & {

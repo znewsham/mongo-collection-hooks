@@ -1,4 +1,4 @@
-import type {
+import type{
   Collection,
   Document,
   OptionalUnlessRequiredId,
@@ -20,6 +20,12 @@ import type {
   FindOneAndDeleteOptions,
   ModifyResult,
   FindOneAndUpdateOptions,
+  MongoBulkWriteError,
+  WriteConcernError,
+  BulkWriteResult as MongoBulkWriteResult,
+  TopologyVersion,
+  OneOrMore,
+  WriteError
 } from 'mongodb';
 import { HookedFindCursor, HookedFindCursorOptions } from "./hookedFindCursor.js";
 
@@ -58,6 +64,11 @@ import { unionOfProjections } from './utils.js';
 import { ChainedAwaiatableEventEmitter, ChainedListenerCallback, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
 import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
+import { BulkWriteError, BulkWriteResult } from './bulkError.js';
+
+function notUndefined<TValue>(value: TValue | undefined): value is TValue {
+  return value !== undefined;
+}
 
 function assertReplacementHasId<TSchema>(replacement: WithoutId<TSchema>): asserts replacement is OptionalUnlessRequiredId<TSchema> {
   if (!(replacement as OptionalUnlessRequiredId<TSchema>)._id) {
@@ -650,7 +661,7 @@ export class HookedCollection<
     RetT extends Promise<DeleteResult | ModifyResult<TSchema> | WithId<TSchema> | null>,
     BEAD extends CollectionBeforeAfterErrorEventDefinitions<TSchema>,
     T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: CollectionBeforeAfterErrorEventDefinitions<TSchema>["delete"]["before"]["returns"] }) => Promise<TypedDeleteResult<TSchema>>,
-    T1 extends () => RetT,
+    T1 extends (ids?: InferIdType<TSchema>[]) => Promise<TypedDeleteResult<TSchema>>,
     BEA extends BEAD["delete"]["before"]["emitArgs"],
     OBEA extends Omit<BEA, "invocationSymbol" | "thisArg" | "getDocument" | "_id">
   >(
@@ -660,43 +671,59 @@ export class HookedCollection<
     limit: number | undefined,
     invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.delete" | "after.delete.success" | "after.delete.error" | "after.delete">,
     ids?: InferIdType<TSchema>[]
-  ): Promise<Awaited<ReturnType<T1>>> {
+  ): Promise<Awaited<ReturnType<T1>>["result"]> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
-      return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
+      return !hookOptions?.shouldRun || hookOptions.shouldRun({
+        argsOrig: beforeEmitArgs.argsOrig,
+        thisArg: this
+      });
     });
     const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
-      return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
+      return !hookOptions?.shouldRun || hookOptions.shouldRun({
+        argsOrig: beforeEmitArgs.argsOrig,
+        thisArg: this
+      });
     });
     const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after.delete, invocationOptions)
     .filter(({ options: hookOptions }) => {
-      return !hookOptions?.shouldRun || hookOptions.shouldRun(beforeEmitArgs.argsOrig[0], beforeEmitArgs.argsOrig[1]);
+      return !hookOptions?.shouldRun || hookOptions.shouldRun({
+        argsOrig: beforeEmitArgs.argsOrig,
+        thisArg: this
+      });
     });
     const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
-    const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
+      argsOrig: beforeEmitArgs.argsOrig,
+      thisArg: this
+    }) : a);
     const beforeListeners = beforeListenersWithOptions.map(({ listener }) => listener);
     const afterListeners = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ listener }) => listener);
     const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ options }) => options?.fetchPrevious);
-    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(notUndefined).map(a => typeof a === "function" ? a({
+      argsOrig: beforeEmitArgs.argsOrig,
+      thisArg: this
+    }) : a);
     const isCacheWarmed = isBeforeGreedy || fetchPrevious;
+    const alwaysAttemptOperation = !!beforeEmitArgs.args[1]?.alwaysAttemptOperation;
 
     const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
-      return noListenersFn() as Awaited<ReturnType<T1>>;
+      return (await noListenersFn()).result;
     }
     if (Object.hasOwnProperty.call(beforeProjection, "_id") && !beforeProjection._id) {
       delete beforeProjection["_id"];
     }
     const sort = beforeEmitArgs.args[1]?.["sort"];
     const cursor = (ids !== undefined && !isCacheWarmed) ? {
-      _transform: (doc: any) => doc,
-      map(transform: (doc: any) => any) {
-        this._transform = transform;
-        return this;
-      },
-      toArray() {
-        return ids.map(id => this._transform({ _id: id }))
+      i: 0,
+      next() {
+        const id = ids[this.i++];
+        if (id) {
+          return { _id: id };
+        }
+        return null;
       }
     } : this.#collection.find<{ _id: any }>(
       beforeEmitArgs.args[0],
@@ -713,27 +740,45 @@ export class HookedCollection<
     };
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy);
     const invocationSymbol = Symbol("delete");
+    const attemptedIds: InferIdType<TSchema>[] = [];
 
     // TODO: this isn't right - it wont actually run in order :shrug:
     // ordered isn't present on findOneAndDeleteOptions
-    const promiseFn = beforeEmitArgs.args[1]?.["ordered"] ? Promise.all.bind(Promise) : Promise.allSettled.bind(Promise);
-    await promiseFn(await cursor.map(async (nextItem) => {
+    const ordered = beforeEmitArgs.args[1]?.["ordered"] !== false;
+    const errors: any = [];
+    let nextItem;
+    while (nextItem = await cursor.next()) {
       const { _id } = nextItem;
+      if (alwaysAttemptOperation) {
+        attemptedIds.push(nextItem._id);
+      }
       if (isBeforeGreedy) {
         beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
       }
-      const chainedFilter = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-        Events.before.delete,
-        {
-          ...beforeEmitArgs,
-          invocationSymbol,
-          _id,
-          getDocument: () => beforeDocumentCache.getDocument(_id),
-          thisArg: this
-        },
-        "filter",
-        beforeListeners,
-      );
+      let chainedFilter: Filter<TSchema> | typeof SkipDocument = beforeEmitArgs.filter;
+      try {
+        chainedFilter = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+          Events.before.delete,
+          {
+            ...beforeEmitArgs,
+            invocationSymbol,
+            _id,
+            getDocument: () => beforeDocumentCache.getDocument(_id),
+            thisArg: this
+          },
+          "filter",
+          beforeListeners,
+        );
+      }
+      catch (error) {
+        errors.push(error);
+        if (ordered) {
+          break;
+        }
+        else {
+          continue;
+        }
+      }
 
       let gotResult = false;
       try {
@@ -743,7 +788,7 @@ export class HookedCollection<
           invocationSymbol
         });
         if (chainedFilter === SkipDocument) {
-          return partialResult;
+          continue;
         }
         gotResult = true;
         const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
@@ -783,11 +828,17 @@ export class HookedCollection<
         else {
           result = partialResult.result;
         }
-        return partialResult;
+        continue;
       }
       catch (e) {
         if (gotResult) {
-          throw e;
+          errors.push(e);
+          if (ordered) {
+            break;
+          }
+          else {
+            continue;
+          }
         }
         await this.#ee.callAllAwaitableInParallel(
           {
@@ -802,16 +853,60 @@ export class HookedCollection<
           Events.afterError.delete,
           Events.after.delete
         );
-        throw e;
+        errors.push(e);
+        if (ordered) {
+          break;
+        }
+        else {
+          continue;
+        }
       }
-    }).toArray());
-    return result as Awaited<Promise<ReturnType<T1>>>;
+    }
+    if (errors.length && limit === 1) {
+      throw errors[0];
+    }
+    if (errors.length) {
+      throw new BulkWriteError(
+        "There were write errors",
+        new BulkWriteResult({
+          ok: 0,
+          insertedCount: 0,
+          upsertedCount: 0,
+          matchedCount: 0,
+          modifiedCount: 0,
+          // @ts-expect-error
+          deletedCount: result?.deletedCount,
+          upsertedIds: {},
+          insertedIds: {}
+        }, errors as WriteError[])
+      );
+    }
+    if (alwaysAttemptOperation && (limit !== 1 || attemptedIds.length === 0)) {
+      const partialResult = await noListenersFn(attemptedIds);
+      if (partialResult.type === "DeleteResult") {
+        const res = result as unknown as DeleteResult;
+        res.acknowledged = res.acknowledged || partialResult.result.acknowledged;
+        res.deletedCount += partialResult.result.deletedCount;
+      }
+      else if (partialResult.type === "ModifyResult") {
+        const res = result as unknown as ModifyResult;
+        if (!res.value) {
+          result = partialResult.result;
+        }
+      }
+      else if (partialResult.type === "Document") {
+        if (!result) {
+          result = partialResult.result;
+        }
+      }
+    }
+    return result;
   }
 
   async #tryCatchUpdate<
     BEAD extends CollectionBeforeAfterErrorEventDefinitions<TSchema>,
     T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: BEAD["update"]["before"]["returns"] }) => Promise<TypedUpdateResult<TSchema>>,
-    T1 extends () => Promise<UpdateResult<TSchema> | ModifyResult<TSchema> | Document | WithId<TSchema> | null>,
+    T1 extends (ids?: InferIdType<TSchema>[]) => Promise<TypedUpdateResult<TSchema>>,
     BEA extends BEAD["update"]["before"]["emitArgs"],
     OBEA extends Omit<BEA, "invocationSymbol" | "thisArg" | "getDocument" | "_id">
   >(
@@ -821,32 +916,51 @@ export class HookedCollection<
     limit: number | undefined,
     invocationOptions?: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, "before.update" | "after.update.success" | "after.update.error" | "after.update">,
     ids?: InferIdType<TSchema>[]
-  ): Promise<Awaited<ReturnType<T1>>> {
+  ): Promise<Awaited<ReturnType<T1>>["result"]> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
-      return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
+      return !hookOptions?.shouldRun || hookOptions.shouldRun({
+        argsOrig: beforeEmitArgs.argsOrig,
+        thisArg: this
+      });
     });
     const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
-      return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
+      return !hookOptions?.shouldRun || hookOptions.shouldRun({
+        argsOrig: beforeEmitArgs.argsOrig,
+        thisArg: this
+      });
     });
     const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after.update, invocationOptions)
     .filter(({ options: hookOptions }) => {
-      return !hookOptions?.shouldRun || hookOptions.shouldRun(...beforeEmitArgs.argsOrig);
+      return !hookOptions?.shouldRun || hookOptions.shouldRun({
+        argsOrig: beforeEmitArgs.argsOrig,
+        thisArg: this
+      });
     });
+
     const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
-    const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
+      argsOrig: beforeEmitArgs.argsOrig,
+      thisArg: this
+    }) : a);
 
     const beforeListeners = beforeListenersWithOptions.map(({ listener }) => listener);
-    const afterProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.projection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const afterProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
+      argsOrig: beforeEmitArgs.argsOrig,
+      thisArg: this
+    }) : a);
     const afterListeners = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ listener }) => listener);
     const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ options }) => options?.fetchPrevious);
-    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(a => a) as NestedProjectionOfTSchema<TSchema>[];
+    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(notUndefined).map(a => typeof a === "function" ? a({
+      argsOrig: beforeEmitArgs.argsOrig,
+      thisArg: this
+    }) : a);
 
 
     const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
-      return noListenersFn() as Awaited<ReturnType<T1>>;
+      return (await noListenersFn()).result;
     }
     if (Object.hasOwnProperty.call(beforeProjection, "_id") && !beforeProjection._id) {
       delete beforeProjection["_id"];
@@ -869,6 +983,7 @@ export class HookedCollection<
       }
     );
     let nextItem = await cursor.next();
+    const alwaysAttemptOperation = !!beforeEmitArgs.args[2]?.alwaysAttemptOperation;
     let result: UpdateResult<TSchema> | Document | ModifyResult<TSchema> | WithId<TSchema> | null = {
       acknowledged: false,
       matchedCount: 0,
@@ -963,19 +1078,29 @@ export class HookedCollection<
         }
       }
 
+      if (alwaysAttemptOperation) {
+        return (await noListenersFn()).result;
+      }
+
       // TODO: why is this necessary? They are the same
-      return result as Awaited<ReturnType<T1>>;
+      return result as Awaited<ReturnType<T1>>["result"];
     }
+    const attemptedIds: InferIdType<TSchema>[] = [];
     const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed);
     const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false);
     const invocationSymbol = Symbol("update");
-    const promises: any[] = [];
+    const errors: any = [];
     do {
+      if (alwaysAttemptOperation) {
+        attemptedIds.push(nextItem._id);
+      }
       if (isCacheWarmed) {
         beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
       }
-      promises.push((async ({ _id }) => {
-        const chainedArgs = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+      const { _id } = nextItem;
+      let chainedArgs;
+      try {
+        chainedArgs = await this.#ee.callExplicitAwaitableListenersChainWithKey(
           Events.before.update,
           {
             ...beforeEmitArgs,
@@ -987,78 +1112,125 @@ export class HookedCollection<
           "filterMutator",
           beforeListeners,
         );
-        let gotResult = false;
-        try {
-          let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
-          gotResult = true;
-          if (chainedArgs !== SkipDocument) {
-            const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
-              Events.afterSuccess.update,
-              // I'm not sure how to do this cleanly
-              // the goal was to enforce type checking of caller + result between update<one|many>, replaceOne and findOneAnd*
-              // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
-              // @ts-expect-error
-              {
-                ...beforeEmitArgs,
-                previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
-                invocationSymbol,
-                _id,
-                getDocument: () => afterDocumentCache.getDocument(_id),
-                thisArg: this,
-                result: partialResult.result,
-              },
-              "result",
-              afterListeners,
-            );
-            if (chainedResult !== undefined) {
-              partialResult.result = chainedResult;
-            }
-          }
-          // A few interesting facts:
-          // 1. All calls in a single request come from one place
-          // 1.a. so all the partialResults should be the same type
-          // 2. Only updateMany has multiple partialResults - it's result type is UpdateResult
-          // 3. So everything else can just reassign
-          if (partialResult.type === "UpdateResult") {
-            if (partialResult.result.acknowledged) {
-              result.acknowledged = true;
-            }
-            if (partialResult.result.matchedCount) {
-              result.matchedCount += partialResult.result.matchedCount;
-            }
-            if (partialResult.result.modifiedCount) {
-              result.modifiedCount += partialResult.result.modifiedCount;
-            }
-          }
-          else if (partialResult.type === "ModifyResult" || partialResult.type === "Document") {
-            result = partialResult.result;
-          }
-        }
-        catch (e) {
-          if (gotResult) {
-            throw e;
-          }
-          await this.#ee.callAllAwaitableInParallel(
+      }
+      catch (error) {
+        errors.push(error);
+        break;
+      }
+      let gotResult = false;
+      try {
+        let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
+        gotResult = true;
+        if (chainedArgs !== SkipDocument) {
+          const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
+            Events.afterSuccess.update,
+            // I'm not sure how to do this cleanly
+            // the goal was to enforce type checking of caller + result between update<one|many>, replaceOne and findOneAnd*
+            // since their results are very different shapes. But the goal is for that to work *on the callback* not here.
+            // @ts-expect-error
             {
               ...beforeEmitArgs,
+              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
               invocationSymbol,
               _id,
               getDocument: () => afterDocumentCache.getDocument(_id),
-              previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
               thisArg: this,
-              error: e,
+              result: partialResult.result,
             },
-            invocationOptions,
-            Events.afterError.update,
-            Events.after.update
+            "result",
+            afterListeners,
           );
-          throw e;
+          if (chainedResult !== undefined) {
+            partialResult.result = chainedResult;
+          }
         }
-      })(nextItem));
+        // A few interesting facts:
+        // 1. All calls in a single request come from one place
+        // 1.a. so all the partialResults should be the same type
+        // 2. Only updateMany has multiple partialResults - it's result type is UpdateResult
+        // 3. So everything else can just reassign
+        if (partialResult.type === "UpdateResult") {
+          const res = result as UpdateResult<TSchema>;
+          if (partialResult.result.acknowledged) {
+            res.acknowledged = true;
+          }
+          if (partialResult.result.matchedCount) {
+            res.matchedCount += partialResult.result.matchedCount;
+          }
+          if (partialResult.result.modifiedCount) {
+            res.modifiedCount += partialResult.result.modifiedCount;
+          }
+        }
+        else if (partialResult.type === "ModifyResult" || partialResult.type === "Document") {
+          result = partialResult.result;
+        }
+      }
+      catch (e) {
+        if (gotResult) {
+          errors.push(e);
+          break;
+        }
+        await this.#ee.callAllAwaitableInParallel(
+          {
+            ...beforeEmitArgs,
+            invocationSymbol,
+            _id,
+            getDocument: () => afterDocumentCache.getDocument(_id),
+            previousDocument: isCacheWarmed ? await beforeDocumentCache.getDocument(_id) : undefined,
+            thisArg: this,
+            error: e,
+          },
+          invocationOptions,
+          Events.afterError.update,
+          Events.after.update
+        );
+        errors.push(e);
+        break;
+      }
       nextItem = await cursor.next();
     } while (nextItem);
-    await Promise.all(promises);
-    return result as Awaited<ReturnType<T1>>;
+    if (errors.length && limit === 1) {
+      throw errors[0];
+    }
+    if (errors.length) {
+      const res = result as UpdateResult<TSchema>;
+      throw new BulkWriteError(
+        "There were write errors",
+        new BulkWriteResult({
+          ok: 0,
+          insertedCount: 0,
+          upsertedCount: res.upsertedCount,
+          matchedCount: res.matchedCount,
+          modifiedCount: res.modifiedCount,
+          deletedCount: 0,
+          upsertedIds: res.upsertedId ? { 0: res.upsertedId } : {},
+          insertedIds: {}
+        }, errors as WriteError[])
+      );
+    }
+    if (alwaysAttemptOperation && (limit !== 1 || attemptedIds.length === 0)) {
+      const partialResult = await noListenersFn(attemptedIds) as Awaited<ReturnType<T1>>;
+      if (partialResult.type === "UpdateResult") {
+        const res = result as UpdateResult<TSchema>;
+        res.acknowledged = res.acknowledged || partialResult.result.acknowledged;
+        res.matchedCount += partialResult.result.matchedCount;
+        res.modifiedCount += partialResult.result.modifiedCount;
+        res.upsertedCount += partialResult.result.upsertedCount;
+        res.upsertedId = partialResult.result.upsertedId;
+      }
+      else if (partialResult.type === "ModifyResult") {
+        const res = result as unknown as ModifyResult<TSchema>;
+        if (!res.value) {
+          result = partialResult.result;
+        }
+      }
+      else if (partialResult.type === "Document") {
+        if (!result) {
+          result = partialResult.result;
+        }
+      }
+    }
+    return result as Awaited<ReturnType<T1>>["result"];
   }
 
   replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: AmendedReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>> {
@@ -1107,13 +1279,25 @@ export class HookedCollection<
                 type: "UpdateResult",
                 result: await this.#collection.replaceOne(
                   // @ts-expect-error
-                  { $and: [chainedFilter, { _id }] },
+                  chainedFilter?._id === _id ? chainedFilter : { $and: [chainedFilter, { _id }] },
                   chainedReplacement as WithoutId<TSchema>,
                   args[2]
                 ) as UpdateResult // it's only a document when explain: true, and I can't see how to make that the case.
               };
             },
-            () => this.#collection.replaceOne(...args) as Promise<UpdateResult>,
+            async (attemptedIds) => {
+              let selector = args[0];
+              if (attemptedIds?.length) {
+                // @ts-expect-error
+                selector = {
+                  $and: [{ _id: { $nin: attemptedIds } }, selector]
+                };
+              }
+              return {
+                type: "UpdateResult",
+                result: await this.#collection.replaceOne(selector, args[1], args[2]) as UpdateResult
+              }
+            },
             1,
             options
           );
@@ -1163,8 +1347,8 @@ export class HookedCollection<
           args: chainedArgs,
           parentInvocationSymbol: invocationSymbol,
           filterMutator: {
-            filter,
-            mutator
+            filter: chainedArgs[0],
+            mutator: chainedArgs[1]
           }
         },
         async ({
@@ -1187,22 +1371,47 @@ export class HookedCollection<
             type: "UpdateResult",
             result: await this.#collection.updateOne(
               // @ts-expect-error
-              { $and: [chainedFilterMutator.filter, { _id }] },
+              chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [chainedFilterMutator.filter, { _id }] },
               chainedFilterMutator.mutator,
               chainedArgs[2]
             )
           };
         },
-        () => {
+        async (attemptedIds) => {
+          if (operation === "updateOne" && attemptedIds?.length) {
+            // this should never happen - the #tryCatchUpdate shouldn't send us here
+            return {
+              type: "UpdateResult",
+              result: {
+                acknowledged: false,
+                matchedCount: 0,
+                modifiedCount: 0,
+                upsertedCount: 0,
+                upsertedId: null
+              }
+            };
+          }
+          let selector: Filter<TSchema> = chainedArgs[0];
+          if (attemptedIds?.length) {
+            // @ts-expect-error
+            selector = {
+              $and: [{ _id: { $nin: attemptedIds } }, selector]
+            }
+          }
           if (ids) {
-            return this.#collection[operation](
-              // @ts-expect-error
-              { $and: [{ _id: { $in: ids } }, chainedArgs[0]] },
+            // @ts-expect-error
+            selector = {
+              $and: [{ _id: { $in: ids } }, selector]
+            };
+          }
+          return {
+            type: "UpdateResult",
+            result: await this.#collection[operation](
+              selector,
               chainedArgs[1],
               chainedArgs[2]
-            );
-          }
-          return this.#collection[operation](chainedArgs[0], chainedArgs[1], chainedArgs[2]);
+            )
+          };
         },
         operation === "updateOne" ? 1 : undefined,
         options,
@@ -1325,20 +1534,41 @@ export class HookedCollection<
             type: "DeleteResult",
             result: await this.#collection.deleteOne(
               // @ts-expect-error
-              { $and: [chainedFilter, { _id }] },
+              chainedFilter?._id === _id ? chainedFilter : { $and: [chainedFilter, { _id }] },
               chainedArgs[1]
             )
           };
         },
-        () => {
-          if (ids) {
-            return this.#collection[operation](
-              // @ts-expect-error
-              { $and: [{ _id: { $in: ids } }, chainedArgs[0]] },
-              chainedArgs[1]
-            );
+        async (attemptedIds) => {
+          let selector: Filter<TSchema> = chainedArgs[0];
+          if (operation === "deleteOne" && attemptedIds?.length) {
+            return {
+              type: "DeleteResult",
+              result: {
+                acknowledged: false,
+                deletedCount: 0
+              }
+            };
           }
-          return this.#collection[operation](chainedArgs[0], chainedArgs[1]);
+          if (attemptedIds?.length) {
+            // @ts-expect-error
+            selector = {
+              $and: [{ _id: { $nin: attemptedIds } }, selector]
+            }
+          }
+          if (ids) {
+            // @ts-expect-error
+            selector = {
+              $and: [{ _id: { $in: ids } }, selector]
+            };
+          }
+          return {
+            type: "DeleteResult",
+            result: await this.#collection[operation](
+              selector,
+              chainedArgs[1]
+            )
+          };
         },
         operation === "deleteOne" ? 1 : undefined,
         options,
@@ -1552,7 +1782,7 @@ export class HookedCollection<
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
                   result: await this.#collection.findOneAndDelete(
                     // @ts-expect-error
-                    { $and: [{ _id }, filter] },
+                    filter?._id === _id ? filter : { $and: [{ _id }, filter] },
                     options
                   )
                 };
@@ -1561,15 +1791,26 @@ export class HookedCollection<
                 type: "ModifyResult",
                 result: await this.#collection.findOneAndDelete(
                   // @ts-expect-error
-                  { $and: [{ _id }, filter] }
+                  filter?._id === _id ? filter : { $and: [{ _id }, filter] }
                 )
               };
             },
-            () => {
+            async () => {
+              let result: ModifyResult<TSchema> | Document;
               if (options) {
-                return this.#collection.findOneAndDelete(filter, options);
+                result = await this.#collection.findOneAndDelete(filter, options);
               }
-              return this.#collection.findOneAndDelete(filter);
+              result = await this.#collection.findOneAndDelete(filter);
+              return {
+                type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
+                result
+              } as {
+                type: "ModifyResult",
+                result: ModifyResult<TSchema>
+              } | {
+                type: "Document",
+                result: WithId<TSchema> | null
+              };
             },
             undefined,
             options
@@ -1648,7 +1889,7 @@ export class HookedCollection<
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
                   result: await this.#collection.findOneAndUpdate(
                     // @ts-expect-error
-                    { $and: [{ _id }, chainedFilterMutator.filter] },
+                    chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
                     chainedFilterMutator.mutator,
                     options
                   )
@@ -1658,17 +1899,30 @@ export class HookedCollection<
                 type: "ModifyResult",
                 result: await this.#collection.findOneAndUpdate(
                   // @ts-expect-error
-                  { $and: [{ _id }, chainedFilterMutator.filter] },
+                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
                   chainedFilterMutator.mutator
                 )
               };
             },
             // no hooks...
-            () => {
+            async () => {
+              let result;
               if (options) {
-                return this.#collection.findOneAndUpdate(filter, update, options);
+                result = await this.#collection.findOneAndUpdate(filter, update, options);
               }
-              return this.#collection.findOneAndUpdate(filter, update);
+              else {
+                result = await this.#collection.findOneAndUpdate(filter, update);
+              }
+              return {
+                type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
+                result: result
+              } as {
+                type: "ModifyResult",
+                result: ModifyResult<TSchema>
+              } | {
+                type: "Document",
+                result: WithId<TSchema> | null
+              };
             },
             1,
             options
@@ -1747,7 +2001,7 @@ export class HookedCollection<
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
                   result: await this.#collection.findOneAndReplace(
                     // @ts-expect-error
-                    { $and: [{ _id }, chainedFilterMutator.filter] },
+                    chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
                     chainedFilterMutator.replacement,
                     options
                   )
@@ -1757,17 +2011,30 @@ export class HookedCollection<
                 type: "ModifyResult",
                 result: await this.#collection.findOneAndReplace(
                   // @ts-expect-error
-                  { $and: [{ _id }, chainedFilterMutator.filter] },
+                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
                   chainedFilterMutator.replacement
                 )
               };
             },
             // no hooks...
-            () => {
+            async () => {
+              let result;
               if (options) {
-                return this.#collection.findOneAndReplace(filter, replacement, options);
+                result = await this.#collection.findOneAndReplace(filter, replacement, options);
               }
-              return this.#collection.findOneAndReplace(filter, replacement);
+              else {
+                result = await this.#collection.findOneAndReplace(filter, replacement);
+              }
+              return {
+                type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
+                result
+              } as {
+                type: "ModifyResult",
+                result: ModifyResult<TSchema>
+              } | {
+                type: "Document",
+                result: WithId<TSchema> | null
+              };
             },
             1,
             options
