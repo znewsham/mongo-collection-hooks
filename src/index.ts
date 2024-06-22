@@ -11,6 +11,13 @@ export {
   AmendedAggregateOptions,
   AmendedReplaceOptions,
   AmendedDistinctOptions,
-  AmendedFindOptions
+  AmendedFindOptions,
+  AmendedCountDocumentsOptions,
+  AmendedCountOptions,
+  AmendedEstimatedDocumentCountOptions,
+  AmendedFindOneAndDeleteOptions,
+  AmendedFindOneAndReplaceOptions,
+  AmendedFindOneAndUpdateOptions,
+  AmendedFindOneOptions
 } from "./events/index.js";
 export { BulkWriteError } from "./bulkError.js";
