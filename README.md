@@ -1,7 +1,7 @@
 # Mongo Collection Hooks
 This package implements collection hooks, similar to [Meteor Collection Hooks](https://github.com/Meteor-Community-Packages/meteor-collection-hooks) but without the meteor dependencies (or any other in fact).
 
-The `HookedCollection` class takes as an argument a collection implementing the mongodb `Collection` interface - or whatever portion of it you intend to use. For example, if you only plan to use `insertOne` - you need only provide something that implements that portion of the interface. The typical argument here would be an actual mongo collection, on the server. However this would happily work client side with whatever implementation you provide.
+The `HookedCollection` class takes as an argument a collection implementing the mongodb `Collection` interface - or whatever portion of it you intend to use. For example, if you only plan to use `insertOne` - you need only provide something that implements `insertOne`. Things do get a little more complex for `insertMany` and similar, since they may also require access to `find`. In general this is only a problem in very specific situations (e.g., a client side implementation that talks to the server). The typical argument here would be an actual mongo collection, on the server. However this would happily work client side with whatever implementation you provide.
 
 ## Basic Usage
 
@@ -66,6 +66,7 @@ type StandardBeforeHookCallArg = {
   // these are provided for nested hooks, e.g., "update" could have a caller of "updateOne"
   caller?: string,
   parentInvocationSymbol?: symbol,
+  signal?: AbortSignal
 }
 
 type StandardAfterSuccessHookCallArg = StandardBeforeHookCallArg & {
@@ -124,8 +125,12 @@ In the case of an error, it will be provided to the `after.error` and `after` ho
 ### parentInvocationSymbol
 In cases where multiple hooks are triggered (e.g., a single `updateMany` call may trigger multiple `update` hooks, one per document) it is useful to know the underlying invocation which triggered these "child" hooks. This is the `invocationSymbol` of that "parent" call - and thus will be the same for all "child" hooks.
 
+### signal
+If provided to the call, a signal will be passed to all hooks to allow any hook with long running operations to exit early.
+
 ### caller (TBC)
 In the case where a hook isn't directly related to a function (e.g., `after.update`), or could be triggered from multiple places (e.g, `before.cursor.toArray`) the `caller` property identifies where the call came from - it typicailly appears with the `parentInvocationSymbol`.
+
 
 ## Hooks
 Some hooks are pretty simple and will be lightly documented with a trivial example and the type of arguments they accept. There are a handful, those listed above that are more interesting and will be documented to a higher level.

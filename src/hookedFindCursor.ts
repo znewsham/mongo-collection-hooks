@@ -113,6 +113,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       {
         invocationSymbol,
         parentInvocationSymbol: this.#findInvocationSymbol,
+        signal: this.#invocationOptions?.signal,
         thisArg: this,
       },
       this.#invocationOptions,
@@ -131,6 +132,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         {
           thisArg: this,
           parentInvocationSymbol: this.#findInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           invocationSymbol
         },
         this.#invocationOptions,
@@ -157,6 +159,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           error: e,
           thisArg: this,
           parentInvocationSymbol: this.#findInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           invocationSymbol
         },
         this.#invocationOptions,
@@ -189,6 +192,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           {
             caller: this.#caller,
             parentInvocationSymbol: this.#currentInvocationSymbol,
+            signal: this.#invocationOptions?.signal,
             thisArg: this,
             invocationSymbol
           },
@@ -219,6 +223,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             {
               caller: this.#caller,
               parentInvocationSymbol: this.#currentInvocationSymbol,
+              signal: this.#invocationOptions?.signal,
               thisArg: this,
               invocationSymbol
             },
@@ -244,6 +249,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             {
               caller: this.#caller,
               parentInvocationSymbol: this.#currentInvocationSymbol,
+              signal: this.#invocationOptions?.signal,
               thisArg: this,
               invocationSymbol,
               error
@@ -486,6 +492,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         caller: "find",
         invocationSymbol,
         parentInvocationSymbol: this.#findInvocationSymbol,
+        signal: this.#invocationOptions?.signal,
         operation: "find.cursor.asyncIterator",
         thisArg: this,
         args: []
@@ -497,6 +504,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       {
         invocationSymbol,
         parentInvocationSymbol: this.#findInvocationSymbol,
+        signal: this.#invocationOptions?.signal,
         thisArg: this
       },
       this.#invocationOptions,
@@ -525,6 +533,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         {
           invocationSymbol,
           parentInvocationSymbol: this.#findInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           thisArg: this,
           error: e
         },
@@ -550,6 +559,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           caller: "find",
           invocationSymbol,
           parentInvocationSymbol: this.#findInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           operation: "find.cursor.asyncIterator",
           thisArg: this,
           args: [],
@@ -569,6 +579,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
         {
           invocationSymbol,
           parentInvocationSymbol: this.#findInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           thisArg: this,
         },
         this.#invocationOptions,
@@ -593,6 +604,7 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
           caller: "find",
           invocationSymbol,
           parentInvocationSymbol: this.#findInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           operation: "find.cursor.asyncIterator",
           thisArg: this,
           args: [],

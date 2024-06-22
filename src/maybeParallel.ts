@@ -25,13 +25,17 @@ export async function maybeParallel<
   cursor: LimitedCursor<TSchema>,
   ordered: boolean,
   batchSize: number = 1000,
+  signal: AbortSignal | undefined,
   first?: { _id: InferIdType<TSchema> }
 ): Promise<any[]> {
+  signal?.throwIfAborted();
   const errors: any[] = [];
   if (ordered) {
     let next = first || await cursor.next();
     while (next) {
+      signal?.throwIfAborted();
       const returnType = await fn(next);
+      signal?.throwIfAborted();
       if (returnType.error) {
         errors.push(returnType.error);
       }
@@ -47,9 +51,12 @@ export async function maybeParallel<
       const batch: { _id: InferIdType<TSchema> }[] = [];
       while (next && batch.length < batchSize) {
         batch.push(next);
+        signal?.throwIfAborted();
         next = await cursor.next();
       }
+      signal?.throwIfAborted();
       await Promise.all(batch.map(async (nextItem) => {
+        signal?.throwIfAborted();
         const returnType = await fn(nextItem);
         if (returnType.error) {
           errors.push(returnType.error);

@@ -1,5 +1,5 @@
 import { StandardDefineHookOptions } from "../awaiatableEventEmitter.js";
-import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
+import { Abortable, Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "./commentedTypes.js";
 
 
 /**
@@ -134,6 +134,7 @@ export type AfterInternalSuccessEmitArgs<O extends CommonDefinitionWithCaller> =
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
     & O["custom"]
 }
 
@@ -146,6 +147,7 @@ export type AfterInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
     & O["custom"]
 }
 
@@ -155,6 +157,7 @@ export type AfterInternalErrorEmitArgsNoArgs<O extends Omit<CommonDefinitionWith
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
     & ErrorT
     & O["custom"]
 }
@@ -167,6 +170,7 @@ export type AfterInternalErrorEmitArgs<O extends Omit<CommonDefinitionWithCaller
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
     & ErrorT
     & O["custom"]
 }
@@ -178,6 +182,7 @@ export type AfterInternalSuccessEmitArgsNoArgs<O extends CommonDefinitionWithCal
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
     & O["custom"]
 }
 
@@ -188,6 +193,7 @@ export type AfterInternalEmitArgsNoArgs<O extends CommonDefinitionWithCaller, re
     & Caller<O>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
     & resultOrError
     & O["custom"]
 }
@@ -197,6 +203,7 @@ export type BeforeInternalEmitArgsNoArgs<O extends CommonDefinitionWithCaller> =
     ThisArg<O>
     & Caller<O>
     & ParentInvocationSymbol
+    & Abortable
     & InvocationSymbol
     & O["custom"]
 }
@@ -208,6 +215,7 @@ export type BeforeInternalEmitArgs<O extends CommonDefinitionWithCaller> = {
     & ArgsOrig<O>
     & Caller<O>
     & ParentInvocationSymbol
+    & Abortable
     & InvocationSymbol
     & O["custom"]
 }
@@ -219,6 +227,7 @@ export type BeforeInternalEmitArgsNoArgsOrig<O extends CommonDefinitionWithCalle
     & Args<O>
     & Caller<O>
     & ParentInvocationSymbol
+    & Abortable
     & InvocationSymbol
     & O["custom"]
 }
@@ -228,6 +237,7 @@ export type BeforeStar<O extends CommonDefinition> = {
     (ThisArg<O>
     & Args<O>
     & InvocationSymbol
+    & Abortable
     & O["custom"])
 }
 
@@ -242,6 +252,7 @@ export type AfterStar<O extends CommonDefinition, resultOrError> = {
     ThisArg<O>
     & Args<O>
     & InvocationSymbol
+    & Abortable
     & O["custom"]
     & resultOrError
 }

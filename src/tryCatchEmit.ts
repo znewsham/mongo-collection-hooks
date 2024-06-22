@@ -25,8 +25,8 @@ export function getTryCatch<
     BEA extends HEM[BE]["emitArgs"],
     AEA extends HEM[AE]["emitArgs"],
     AIE extends string & keyof BEAAD,
-    BEAO extends Omit<BEA, "args" | "invocationSymbol" | "caller">,
-    AEAO extends BEA extends { argsOrig: any[] } ? Omit<AEA, "args" | "invocationSymbol" | "caller" | "result"> : Omit<AEA, "args" | "argsOrig" | "invocationSymbol" | "caller" | "result">,
+    BEAO extends Omit<BEA, "args" | "invocationSymbol" | "caller" | "signal">,
+    AEAO extends BEA extends { argsOrig: any[] } ? Omit<AEA, "args" | "invocationSymbol" | "caller" | "result" | "signal"> : Omit<AEA, "args" | "argsOrig" | "invocationSymbol" | "caller" | "result" | "signal">,
     CT extends BEAAD[IE]["caller"] | undefined
   >(
     ee: HookedEventEmitter<HEM>,
@@ -41,6 +41,7 @@ export function getTryCatch<
     internalEvent: IE,
     ...additionalInternalEvents: ExtraBeforeAfterEvent<HEM, AIE>[]
   ): Promise<Awaited<ReturnType<T>>> {
+    invocationOptions?.signal?.throwIfAborted();
     if (caller) {
       ee.assertCaller(caller, `before.${internalEvent}`);
     }
@@ -85,6 +86,7 @@ export function getTryCatch<
           ...(args && { args }),
           ...(argsOrig && { argsOrig }),
           ...(caller && { caller }),
+          ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
           ...beforeAfterEmitArgs,
         },
         chainArgsKey,
@@ -100,6 +102,7 @@ export function getTryCatch<
           invocationSymbol,
           ...(caller && { caller }),
           ...(args && { args }),
+          ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
           ...beforeAfterEmitArgs
         },
         // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
@@ -110,6 +113,7 @@ export function getTryCatch<
     }
     let gotResult = false;
     try {
+      invocationOptions?.signal?.throwIfAborted();
       let result = await fn({ invocationSymbol, ...(chainedArgs && { beforeHooksResult: chainedArgs })});
       gotResult = true;
       // this is super hacky - it's mostly for the insert/delete/update events.
@@ -124,6 +128,7 @@ export function getTryCatch<
             ...(args && { args }),
             ...(argsOrig && { argsOrig }),
             ...(result !== undefined && { result }),
+            ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
             ...beforeAfterEmitArgs
           },
           "result",
@@ -146,6 +151,7 @@ export function getTryCatch<
             ...(args && { args }),
             ...(argsOrig && { argsOrig }),
             ...(result !== undefined && { result }),
+            ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
             ...beforeAfterEmitArgs
           },
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
@@ -166,6 +172,7 @@ export function getTryCatch<
             ...(caller && { caller }),
             ...(args && { args }),
             ...(argsOrig && { argsOrig }),
+            ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
             error: e,
             thisArg: beforeAfterEmitArgs["thisArg"],
             ...beforeAfterEmitArgs

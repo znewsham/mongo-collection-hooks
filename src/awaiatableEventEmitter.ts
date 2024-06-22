@@ -20,7 +20,9 @@ export type StandardInvokeHookOptions<
   /** Filter the hooks to only run those which don't include one of these tags */
   excludeTags?: string[],
   /** A function to run to determine whether a hook should be ran or not */
-  includeHook?: <HK extends K>(hookName: HK, hook: ChainedListenerCallback<HK, EM>, options?: EM[K]["options"]) => boolean
+  includeHook?: <HK extends K>(hookName: HK, hook: ChainedListenerCallback<HK, EM>, options?: EM[K]["options"]) => boolean,
+  /** An abort signal to allow interuption of long running operations - particularly useful in the case of *Many operations with individual hooks */
+  signal?: AbortSignal
 }
 
 
@@ -98,7 +100,8 @@ export class ChainedAwaiatableEventEmitter<
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK | undefined,
     origChainedValue: CK extends undefined ? undefined : EM[K]["emitArgs"][CK],
-    listeners: ChainedListenerCallback<K, EM>[]
+    listeners: ChainedListenerCallback<K, EM>[],
+    signal: AbortSignal | undefined
   ): EM[K]["returns"] {
     const origKey = `${chainKey}Orig`;
     const {
@@ -107,6 +110,9 @@ export class ChainedAwaiatableEventEmitter<
     let chainedValue = origChainedValue;
 
     for (const listener of listeners) {
+      if (signal?.aborted) {
+        throw signal.reason;
+      }
       const perListenerArgs: EM[K]["callbackArgs"] = {
         ...remainderOfEmitArgs,
         ...(chainKey && { [chainKey]: chainedValue }),
@@ -135,7 +141,8 @@ export class ChainedAwaiatableEventEmitter<
       chainKey,
       // @ts-expect-error
       chainKey === undefined ? undefined : emitArgs[chainKey],
-      this.relevantAwaitableListeners(eventName, options)
+      this.relevantAwaitableListeners(eventName, options),
+      options?.signal
     );
   }
 
@@ -152,7 +159,8 @@ export class ChainedAwaiatableEventEmitter<
       chainKey,
       // @ts-expect-error
       chainKey === undefined ? undefined : emitArgs[chainKey],
-      listeners
+      listeners,
+      options?.signal
     );
   }
 
@@ -169,10 +177,15 @@ export class ChainedAwaiatableEventEmitter<
       const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
       const listeners = this.relevantAwaitableListeners(eventName, options);
       const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
-      listeners.forEach(listener => listener({
-        ...emitArgs,
-        ...extraEmitArgs
-      }));
+      listeners.forEach(listener => {
+        if (options?.signal?.aborted) {
+          throw options.signal.reason;
+        }
+        listener({
+          ...emitArgs,
+          ...extraEmitArgs
+        });
+      });
     });
   }
 
@@ -181,7 +194,8 @@ export class ChainedAwaiatableEventEmitter<
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK,
     origChainedValue: EM[K]["emitArgs"][CK],
-    listeners: ChainedListenerCallback<K, EM>[]
+    listeners: ChainedListenerCallback<K, EM>[],
+    signal: AbortSignal | undefined
   ): Promise<EM[K]["returns"]> {
     const origKey = `${chainKey}Orig`;
     const {
@@ -191,6 +205,9 @@ export class ChainedAwaiatableEventEmitter<
     let chainedValue = emitArgs[chainKey];
 
     for (const listener of listeners) {
+      if (signal?.aborted) {
+        throw signal.reason;
+      }
       const perListenerArgs: EM[K]["callbackArgs"] = {
         ...remainderOfEmitArgs,
         [chainKey]: chainedValue,
@@ -216,7 +233,8 @@ export class ChainedAwaiatableEventEmitter<
       emitArgs,
       chainKey,
       origChainedValue,
-      this.relevantAwaitableListeners(eventName, options)
+      this.relevantAwaitableListeners(eventName, options),
+      options?.signal
     );
   }
 
@@ -233,10 +251,15 @@ export class ChainedAwaiatableEventEmitter<
       const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
       const listeners = this.relevantAwaitableListeners(eventName, options);
       const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
-      return listeners.map(listener => listener({
+      return listeners.map(listener => {
+        if (options?.signal?.aborted) {
+          throw options.signal.reason;
+        }
+        return listener({
         ...emitArgs,
         ...extraEmitArgs
-      }));
+        });
+      });
     }));
   }
 
@@ -265,7 +288,8 @@ export class ChainedAwaiatableEventEmitter<
         },
         chainKey,
         origChainedValue,
-        this.relevantAwaitableListeners(eventName, options)
+        this.relevantAwaitableListeners(eventName, options),
+        options?.signal
       );
       if (chainedResult !== undefined) {
         chainedValue = chainedResult;
@@ -278,6 +302,7 @@ export class ChainedAwaiatableEventEmitter<
     emitArgs: EM[MK]["emitArgs"],
     chainKey: CK,
     listeners: ChainedListenerCallback<MK, EM>[],
+    signal: AbortSignal | undefined
   ) : Promise<EM[MK]["returns"]> {
     let chainedValue = emitArgs[chainKey];
     const origChainedValue = chainedValue;
@@ -289,7 +314,8 @@ export class ChainedAwaiatableEventEmitter<
       },
       chainKey,
       origChainedValue,
-      listeners
+      listeners,
+      signal
     );
     if (chainedResult !== undefined) {
       chainedValue = chainedResult;

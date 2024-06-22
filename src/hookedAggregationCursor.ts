@@ -64,7 +64,8 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
             caller: this.#caller,
             parentInvocationSymbol: this.#currentInvocationSymbol,
             thisArg: this,
-            invocationSymbol
+            invocationSymbol,
+            signal: this.#invocationOptions?.signal
           },
           this.#invocationOptions,
           Events.before["aggregation.cursor.execute"],
@@ -89,6 +90,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
               caller: this.#caller,
               parentInvocationSymbol: this.#currentInvocationSymbol,
               thisArg: this,
+              signal: this.#invocationOptions?.signal,
               invocationSymbol
             },
             this.#invocationOptions,
@@ -102,6 +104,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
               caller: this.#caller,
               parentInvocationSymbol: this.#currentInvocationSymbol,
               thisArg: this,
+              signal: this.#invocationOptions?.signal,
               invocationSymbol,
               error
             },
@@ -300,6 +303,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         invocationSymbol,
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
         operation: "aggregation.cursor.asyncIterator",
+        signal: this.#invocationOptions?.signal,
         thisArg: this,
         args: []
       },
@@ -310,6 +314,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       {
         invocationSymbol,
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        signal: this.#invocationOptions?.signal,
         thisArg: this
       },
       this.#invocationOptions,
@@ -337,6 +342,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         {
           invocationSymbol,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           thisArg: this,
           error: e
         },
@@ -363,6 +369,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           invocationSymbol,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
           operation: "aggregation.cursor.asyncIterator",
+          signal: this.#invocationOptions?.signal,
           thisArg: this,
           args: [],
           error: e
@@ -381,6 +388,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         {
           invocationSymbol,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           thisArg: this
         },
         this.#invocationOptions,
@@ -405,6 +413,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           caller: "aggregate",
           invocationSymbol,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           operation: "aggregation.cursor.asyncIterator",
           thisArg: this,
           args: [],
@@ -458,6 +467,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       {
         invocationSymbol,
         parentInvocationSymbol: this.#aggregateInvocationSymbol,
+        signal: this.#invocationOptions?.signal,
         thisArg: this,
       },
       this.#invocationOptions,
@@ -476,6 +486,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
         {
           thisArg: this,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           invocationSymbol
         },
         this.#invocationOptions,
@@ -502,6 +513,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
           error: e,
           thisArg: this,
           parentInvocationSymbol: this.#aggregateInvocationSymbol,
+          signal: this.#invocationOptions?.signal,
           invocationSymbol
         },
         this.#invocationOptions,

@@ -1,6 +1,6 @@
 import type { Document } from "mongodb";
 import { AfterStar, AfterStarCaller, BeforeAfterCallbackArgsAndReturn, BeforeStar, BeforeStarCaller, ExtractEventDefinitions, NoReturns } from "./helpersTypes.js"
-import { ErrorT, ResultOrError, Result } from "../commentedTypes.js"
+import { ErrorT, ResultOrError, Result } from "./commentedTypes.js"
 import { HookedCollectionInterface } from "./hookedCollectionInterface.js";
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";

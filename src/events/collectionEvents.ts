@@ -29,7 +29,7 @@ import type {
 
 import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NestedProjectionOfTSchema, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
 import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
-import { Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "../commentedTypes.js";
+import { Abortable, Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "./commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 import { HookedCollectionInterface } from "./hookedCollectionInterface.js";
@@ -73,16 +73,16 @@ type BeforeUpdateDefineHookOptions<TSchema extends Document> = StandardDefineHoo
   & WithDocumentDefineHookOptions<TSchema, UpdateCallArgs<TSchema>>
 
 type AfterUpdateDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-& ShouldRun<TSchema, UpdateCallArgs<TSchema>>
+  & ShouldRun<TSchema, UpdateCallArgs<TSchema>>
   & WithDocumentDefineHookOptions<TSchema, UpdateCallArgs<TSchema>>
   & WithPreviousDocumentDefineHookOptions<TSchema, UpdateCallArgs<TSchema>>
 
 type BeforeDeleteDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-& ShouldRun<TSchema, DeleteCallArgs<TSchema>>
+  & ShouldRun<TSchema, DeleteCallArgs<TSchema>>
   & WithDocumentDefineHookOptions<TSchema, DeleteCallArgs<TSchema>>
 
 type AfterDeleteDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
-& ShouldRun<TSchema, DeleteCallArgs<TSchema>>
+  & ShouldRun<TSchema, DeleteCallArgs<TSchema>>
   & WithPreviousDocumentDefineHookOptions<TSchema, DeleteCallArgs<TSchema>>
 
 type AfterInsertOptions<TSchema extends Document> = StandardDefineHookOptions
@@ -93,6 +93,7 @@ type BeforeTopLevelEmitArgs<O extends CommonDefinition> = {
     ThisArg<O>
     & Args<O>
     & InvocationSymbol
+    & Abortable
     & O["custom"]
 }
 
@@ -103,6 +104,7 @@ type AfterTopLevelSuccessEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & Result<O>
     & InvocationSymbol
+    & Abortable
     & O["custom"]
 };
 
@@ -113,6 +115,7 @@ type AfterTopLevelErrorEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & InvocationSymbol
     & ErrorT
+    & Abortable
     & O["custom"]
 };
 
@@ -123,6 +126,7 @@ type AfterTopLevelEmitArgs<O extends CommonDefinition> = {
     & ArgsOrig<O>
     & InvocationSymbol
     & ResultOrError<O>
+    & Abortable
     & O["custom"]
 };
 
@@ -157,6 +161,7 @@ type UpdateCommonEmitArgs<TSchema extends Document> = {
     & InvocationSymbol
     & ParentInvocationSymbol
     & PreviousDocument
+    & Abortable
     & FullDocument
 };
 
@@ -223,6 +228,7 @@ type DeleteCommonEmitArgs<TSchema extends Document> = {
     & ArgsOrig<DeleteCommon<TSchema>>
     & InvocationSymbol
     & ParentInvocationSymbol
+    & Abortable
 };
 
 type DeleteCommonResultEmitArgs<TSchema extends Document> = {

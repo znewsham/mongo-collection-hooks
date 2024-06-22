@@ -52,3 +52,7 @@ export type ResultOrig<O> = O extends {result: any} ? {
   resultOrig: O["result"]
 } : {}
 
+export type Abortable = {
+  /** An abort signal to allow interuption of long running operations - particularly useful in the case of *Many operations with individual hooks */
+  signal: AbortSignal | undefined
+}

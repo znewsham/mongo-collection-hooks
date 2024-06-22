@@ -8,7 +8,6 @@ import type{
   InsertManyResult,
   UpdateResult,
   WithoutId,
-  CountOptions,
   AggregationCursor,
   FindCursor,
   InferIdType,
@@ -54,6 +53,8 @@ import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocu
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 import { BulkWriteError, BulkWriteResult } from './bulkError.js';
 import { maybeParallel } from './maybeParallel.js';
+import { raceSignal } from './raceSignal.js';
+import { DocumentCache } from './documentCache.js';
 
 function notUndefined<TValue>(value: TValue | undefined): value is TValue {
   return value !== undefined;
@@ -81,39 +82,7 @@ type TypedDeleteResult<TSchema extends Document> = {
   result: WithId<TSchema> | null
 }
 
-class DocumentCache<TSchema extends Document> {
-  #map: Map<InferIdType<TSchema>, Promise<WithId<TSchema> | null>> = new Map();
-  #collection: Collection<TSchema>;
-  #projection: NestedProjectionOfTSchema<TSchema>;
-  #dontLoadDocuments: boolean;
 
-  constructor(
-    collection: Collection<TSchema>,
-    projection: NestedProjectionOfTSchema<TSchema>,
-    dontLoadDocuments: boolean
-  ) {
-    this.#collection = collection;
-    this.#projection = projection;
-    this.#dontLoadDocuments = dontLoadDocuments;
-  }
-
-  getDocument(id: InferIdType<TSchema>): Promise<WithId<TSchema> | null> {
-    if (!this.#map.has(id)) {
-      if (this.#dontLoadDocuments) {
-        return Promise.resolve(null);
-      }
-
-      // INTENTIONALLY *NOT* await
-      // @ts-expect-error
-      this.#map.set(id, this.#collection.findOne({ _id: id }, { projection: this.#projection}));
-    }
-    return this.#map.get(id) || Promise.resolve(null);
-  }
-
-  setDocument(id: InferIdType<TSchema>, doc: WithId<TSchema>): void {
-    this.#map.set(id, Promise.resolve(doc));
-  }
-}
 
 interface HookedFindCursorConstructor<TSchema extends Document> {
   new (filter: Filter<TSchema> | undefined, cursor: FindCursor, options: HookedFindCursorOptions<TSchema>): HookedFindCursor
@@ -161,6 +130,7 @@ export class HookedCollection<
       {
         args: [pipeline, options],
         invocationSymbol,
+        signal: options?.signal,
         thisArg: this
       },
       "args",
@@ -186,6 +156,7 @@ export class HookedCollection<
         {
           args: [chainedPipeline, chainedOptions],
           result: cursor,
+          signal: options?.signal,
           argsOrig: [pipeline, options],
           thisArg: this,
           invocationSymbol
@@ -206,6 +177,7 @@ export class HookedCollection<
         {
           args: [chainedPipeline, chainedOptions],
           error: e,
+          signal: options?.signal,
           argsOrig: [pipeline, options],
           thisArg: this,
           invocationSymbol
@@ -231,7 +203,7 @@ export class HookedCollection<
       InternalEvents.distinct,
       { args: [key, filter, options] },
       "args",
-      ({ beforeHooksResult: [key, filter, options] }) => this.#collection.distinct(key, filter, options),
+      ({ beforeHooksResult: [key, filter, options] }) => raceSignal(options?.signal, this.#collection.distinct(key, filter, options)),
       options
     );
   }
@@ -250,12 +222,12 @@ export class HookedCollection<
         "args",
         ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
           if (chainedFilter && options) {
-            return this.#collection.findOne<T>(chainedFilter, chainedOptions);
+            return raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter, chainedOptions));
           }
           if (chainedFilter) {
-            return this.#collection.findOne<T>(chainedFilter);
+            return raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter));
           }
-          return this.#collection.findOne<T>();
+          return raceSignal(options?.signal, this.#collection.findOne<T>());
         },
         options,
         {
@@ -286,6 +258,7 @@ export class HookedCollection<
       {
         args: [filter, options],
         thisArg: this,
+        signal: options?.signal,
         invocationSymbol
       },
       "args",
@@ -315,6 +288,7 @@ export class HookedCollection<
         {
           args: [chainedFilter, chainedOptions],
           result: cursor,
+          signal: options?.signal,
           argsOrig: [filter, options],
           thisArg: this,
           invocationSymbol
@@ -334,6 +308,7 @@ export class HookedCollection<
         {
           args: [chainedFilter, chainedOptions],
           error: e,
+          signal: options?.signal,
           argsOrig: [filter, options],
           thisArg: this,
           invocationSymbol
@@ -362,7 +337,7 @@ export class HookedCollection<
     // TODO: this is a bit of a hack. It stops us getting typeerrors on things like findOne*
     OIE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema>,
     EA extends HEM[BE]["emitArgs"],
-    OEA extends Omit<EA, "invocationSymbol" | "thisArg">
+    OEA extends Omit<EA, "invocationSymbol" | "thisArg" | "signal">
   >(
     internalEvent: IE,
     emitArgs: OEA,
@@ -434,7 +409,7 @@ export class HookedCollection<
                 insertedId: null as unknown as InferIdType<TSchema>
               };
             }
-            return this.#collection.insertOne(beforeHooksResult, options)
+            return raceSignal(options?.signal, this.#collection.insertOne(beforeHooksResult, options))
           },
           options
         ),
@@ -469,7 +444,7 @@ export class HookedCollection<
           const hasAfter = !!afterSuccessHooks.length || !!afterHooks.length;
           const hasAfterError = !!afterErrorHooks.length || !afterHooks.length;
           if (!hasBefore && !hasAfter) {
-            return this.#collection.insertMany(docs, options);
+            return raceSignal(options?.signal, this.#collection.insertMany(docs, options));
           }
           else {
             const docMap = new Map<OptionalUnlessRequiredId<TSchema>, { invocationSymbol: symbol, doc: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument }>();
@@ -482,6 +457,7 @@ export class HookedCollection<
                   {
                     caller: "insertMany",
                     doc,
+                    signal: options?.signal,
                     parentInvocationSymbol,
                     args: [docs, options],
                     argsOrig,
@@ -501,7 +477,7 @@ export class HookedCollection<
             let ret: InsertManyResult<TSchema> | Promise<InsertManyResult<TSchema>>;
             try {
               if (chainedDocs.length) {
-                ret = this.#collection.insertMany(chainedDocs, options);
+                ret = raceSignal(options?.signal, this.#collection.insertMany(chainedDocs, options));
               }
               else {
                 ret = {
@@ -532,6 +508,7 @@ export class HookedCollection<
                     argsOrig,
                     caller: "insertMany",
                     doc,
+                    signal: options?.signal,
                     error: e,
                     invocationSymbol,
                     parentInvocationSymbol,
@@ -560,6 +537,7 @@ export class HookedCollection<
                     caller: "insertMany",
                     args: [docs, options],
                     doc,
+                    signal: options?.signal,
                     argsOrig: [docs, options],
                     result: {
                       acknowledged: retToUse.acknowledged,
@@ -692,12 +670,14 @@ export class HookedCollection<
 
     const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
+      invocationOptions?.signal?.throwIfAborted();
       return (await noListenersFn()).result;
     }
     if (Object.hasOwnProperty.call(beforeProjection, "_id") && !beforeProjection._id) {
       delete beforeProjection["_id"];
     }
     const sort = beforeEmitArgs.args[1]?.["sort"];
+    invocationOptions?.signal?.throwIfAborted();
     const cursor = (ids !== undefined && !isCacheWarmed) ? {
       i: 0,
       next() {
@@ -720,11 +700,12 @@ export class HookedCollection<
       acknowledged: false,
       deletedCount: 0
     };
-    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy);
+    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy, invocationOptions?.signal);
     const invocationSymbol = Symbol("delete");
     const attemptedIds: InferIdType<TSchema>[] = [];
 
     const ordered = (beforeEmitArgs.args.slice(-1)[0] as AmendedDeleteOptions | undefined)?.ordered !== false;
+    invocationOptions?.signal?.throwIfAborted();
     const errors = await maybeParallel(
       async (nextItem) => {
         const { _id } = nextItem;
@@ -747,6 +728,7 @@ export class HookedCollection<
             },
             "filter",
             beforeListeners,
+            invocationOptions?.signal
           );
         }
         catch (error) {
@@ -758,11 +740,13 @@ export class HookedCollection<
 
         let gotResult = false;
         try {
+          invocationOptions?.signal?.throwIfAborted();
           let partialResult = await perDocFn({
             _id,
             beforeHooksResult: chainedFilter,
             invocationSymbol
           });
+          invocationOptions?.signal?.throwIfAborted();
           if (chainedFilter === SkipDocument) {
             return {
               type: "Continue"
@@ -784,7 +768,8 @@ export class HookedCollection<
               result: partialResult.result,
             },
             "result",
-            afterListeners
+            afterListeners,
+            invocationOptions?.signal
           );
           if (chainedResult !== undefined) {
             partialResult.result = chainedResult;
@@ -838,7 +823,8 @@ export class HookedCollection<
       },
       cursor,
       ordered,
-      (beforeEmitArgs.args?.slice(-1)[0] as AmendedDeleteOptions | undefined)?.hookBatchSize
+      (beforeEmitArgs.args?.slice(-1)[0] as AmendedDeleteOptions | undefined)?.hookBatchSize,
+      invocationOptions?.signal
     );
     if (errors.length && limit === 1) {
       throw errors[0];
@@ -860,6 +846,7 @@ export class HookedCollection<
       );
     }
     if (alwaysAttemptOperation && (limit !== 1 || attemptedIds.length === 0)) {
+      invocationOptions?.signal?.throwIfAborted();
       const partialResult = await noListenersFn(attemptedIds);
       if (partialResult.type === "DeleteResult") {
         const res = result as unknown as DeleteResult;
@@ -938,12 +925,14 @@ export class HookedCollection<
 
     const beforeProjection = unionOfProjections([...beforeProjections, ...fetchPreviousProjections]);
     if (beforeListeners.length === 0 && afterListeners.length === 0) {
+      invocationOptions?.signal?.throwIfAborted();
       return (await noListenersFn()).result;
     }
     if (Object.hasOwnProperty.call(beforeProjection, "_id") && !beforeProjection._id) {
       delete beforeProjection["_id"];
     }
     const isCacheWarmed = isBeforeGreedy || fetchPrevious;
+    invocationOptions?.signal?.throwIfAborted();
     const cursor = (ids !== undefined && !isCacheWarmed) ? {
       i: 0,
       next() {
@@ -977,24 +966,25 @@ export class HookedCollection<
           beforeEmitArgs.argsOrig as UpsertCallArgs<TSchema, typeof beforeEmitArgs.caller>,
           beforeEmitArgs.args as UpsertCallArgs<TSchema, typeof beforeEmitArgs.caller>,
           async({ caller, args }) => {
+            invocationOptions?.signal?.throwIfAborted();
             // for whatever reason, destructuring arrays means you lose type inferrence of those items
             // const [chainedFilter, chainedModifier, chainedOptions] = args;
             if (caller === "replaceOne") {
               return {
                 type: "UpdateResult",
-                result: await this.#collection.replaceOne(args[0], args[1], args[2]) as UpdateResult<TSchema>
+                result: await raceSignal(invocationOptions?.signal, this.#collection.replaceOne(args[0], args[1], args[2])) as UpdateResult<TSchema>
               };
             }
             else if (caller === "updateOne") {
               return {
                 type: "UpdateResult",
-                result: await this.#collection.updateOne(args[0], args[1], args[2])
+                result: await raceSignal(invocationOptions?.signal, this.#collection.updateOne(args[0], args[1], args[2]))
               };
             }
             else if (caller === "updateMany") {
               return {
                 type: "UpdateResult",
-                result: await this.#collection.updateMany(args[0], args[1], args[2])
+                result: await raceSignal(invocationOptions?.signal, this.#collection.updateMany(args[0], args[1], args[2]))
               };
             }
             else if (caller === "findOneAndUpdate") {
@@ -1003,18 +993,18 @@ export class HookedCollection<
                 if (args[2].includeResultMetadata === false) {
                   return {
                     type: "Document",
-                    result: await this.#collection.findOneAndUpdate(args[0], args[1], { ...args[2], includeResultMetadata: false })
+                    result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0], args[1], { ...args[2], includeResultMetadata: false }))
                   };
                 }
                 return {
                   // CAREFUL - apparently this defaults to true NOW, but will default to false in a future release... fun
                   type: "ModifyResult",
-                  result: await this.#collection.findOneAndUpdate(args[0], args[1], args[2])
+                  result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0], args[1], args[2]))
                 };
               }
               return {
                 type: "ModifyResult",
-                result: await this.#collection.findOneAndUpdate(args[0], args[1])
+                result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0], args[1]))
               };
             }
             else if (caller === "findOneAndReplace") {
@@ -1023,18 +1013,18 @@ export class HookedCollection<
                 if (args[2].includeResultMetadata === false) {
                   return {
                     type: "Document",
-                    result: await this.#collection.findOneAndReplace(args[0], args[1], { ...args[2], includeResultMetadata: false })
+                    result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0], args[1], { ...args[2], includeResultMetadata: false }))
                   };
                 }
                 return {
                   // CAREFUL - apparently this defaults to true NOW, but will default to false in a future release... fun
                   type: "ModifyResult",
-                  result: await this.#collection.findOneAndReplace(args[0], args[1], args[2])
+                  result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0], args[1], args[2]))
                 };
               }
               return {
                 type: "ModifyResult",
-                result: await this.#collection.findOneAndReplace(args[0], args[1])
+                result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0], args[1]))
               };
             }
             throw new Error("Unrecognized caller");
@@ -1057,6 +1047,7 @@ export class HookedCollection<
       }
 
       if (alwaysAttemptOperation) {
+        invocationOptions?.signal?.throwIfAborted();
         return (await noListenersFn()).result;
       }
 
@@ -1064,8 +1055,8 @@ export class HookedCollection<
       return result as Awaited<ReturnType<T1>>["result"];
     }
     const attemptedIds: InferIdType<TSchema>[] = [];
-    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed);
-    const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false);
+    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed, invocationOptions?.signal);
+    const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false, invocationOptions?.signal);
     const invocationSymbol = Symbol("update");
 
     const ordered = (beforeEmitArgs.args.slice(-1)[0] as AmendedUpdateOptions | undefined)?.ordered !== false;
@@ -1091,6 +1082,7 @@ export class HookedCollection<
             },
             "filterMutator",
             beforeListeners,
+            invocationOptions?.signal,
           );
         }
         catch (error) {
@@ -1101,6 +1093,8 @@ export class HookedCollection<
         }
         let gotResult = false;
         try {
+          invocationOptions?.signal?.throwIfAborted();
+          // perDocFn decides what to do with SkipDocument since it's shape dependent.
           let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
           gotResult = true;
           if (chainedArgs !== SkipDocument) {
@@ -1121,6 +1115,7 @@ export class HookedCollection<
               },
               "result",
               afterListeners,
+              invocationOptions?.signal,
             );
             if (chainedResult !== undefined) {
               partialResult.result = chainedResult;
@@ -1180,6 +1175,7 @@ export class HookedCollection<
       cursor,
       ordered,
       (beforeEmitArgs.args?.slice(-1)[0] as AmendedUpdateOptions | undefined)?.hookBatchSize,
+      invocationOptions?.signal,
       nextItem
     );
     if (errors.length && limit === 1) {
@@ -1202,6 +1198,7 @@ export class HookedCollection<
       );
     }
     if (alwaysAttemptOperation && (limit !== 1 || attemptedIds.length === 0)) {
+      invocationOptions?.signal?.throwIfAborted();
       const partialResult = await noListenersFn(attemptedIds) as Awaited<ReturnType<T1>>;
       if (partialResult.type === "UpdateResult") {
         const res = result as UpdateResult<TSchema>;
@@ -1248,6 +1245,7 @@ export class HookedCollection<
               caller: "replaceOne",
               argsOrig,
               args,
+              signal: options?.signal,
               filterMutator: {
                 filter: args[0],
                 replacement: args[1]
@@ -1270,12 +1268,12 @@ export class HookedCollection<
               const { filter: chainedFilter, replacement: chainedReplacement } = chainedFilterMutator;
               return {
                 type: "UpdateResult",
-                result: await this.#collection.replaceOne(
+                result: await raceSignal(options?.signal, this.#collection.replaceOne(
                   // @ts-expect-error
                   chainedFilter?._id === _id ? chainedFilter : { $and: [chainedFilter, { _id }] },
                   chainedReplacement as WithoutId<TSchema>,
                   args[2]
-                ) as UpdateResult // it's only a document when explain: true, and I can't see how to make that the case.
+                )) as UpdateResult // it's only a document when explain: true, and I can't see how to make that the case.
               };
             },
             async (attemptedIds) => {
@@ -1288,7 +1286,7 @@ export class HookedCollection<
               }
               return {
                 type: "UpdateResult",
-                result: await this.#collection.replaceOne(selector, args[1], args[2]) as UpdateResult
+                result: await raceSignal(options?.signal, this.#collection.replaceOne(selector, args[1], args[2])) as UpdateResult
               }
             },
             1,
@@ -1316,7 +1314,7 @@ export class HookedCollection<
     const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ options: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
     let ids: InferIdType<TSchema>[] | undefined;
     if (wantsIds) {
-      ids = (await this.#collection.find(filter, { projection: { _id: 1 }, ...(operation === "updateOne" ? { limit: 1 } : {}) }).toArray()).map(({ _id }) => _id);
+      ids = (await raceSignal(options?.signal, this.#collection.find(filter, { projection: { _id: 1 }, ...(operation === "updateOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
     }
     const argsOrig = [filter, mutator, options] as const;
     const invocationSymbol = Symbol(operation);
@@ -1325,18 +1323,21 @@ export class HookedCollection<
       Events.before[operation],
       {
         args: argsOrig,
+        signal: options?.signal,
         ...(operation === "updateOne" ? { _id: ids?.[0] } : { _ids: ids }),
         invocationSymbol,
         thisArg: this
       },
       "args",
       beforeListeners,
+      options?.signal,
     );
     try {
       const result = await this.#tryCatchUpdate(
         {
           caller: operation,
           argsOrig,
+          signal: options?.signal,
           args: chainedArgs,
           parentInvocationSymbol: invocationSymbol,
           filterMutator: {
@@ -1362,12 +1363,12 @@ export class HookedCollection<
           }
           return {
             type: "UpdateResult",
-            result: await this.#collection.updateOne(
+            result: await raceSignal(options?.signal, this.#collection.updateOne(
               // @ts-expect-error
               chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [chainedFilterMutator.filter, { _id }] },
               chainedFilterMutator.mutator,
               chainedArgs[2]
-            )
+            ))
           };
         },
         async (attemptedIds) => {
@@ -1418,12 +1419,14 @@ export class HookedCollection<
           args: argsOrig,
           argsOrig,
           result,
+          signal: options?.signal,
           ...(operation === "updateOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this
         },
         "result",
         afterSuccessListeners,
+        options?.signal,
       );
       return chainedResult || result;
     }
@@ -1436,6 +1439,7 @@ export class HookedCollection<
         {
           args: chainedArgs,
           argsOrig,
+          signal: options?.signal,
           ...(operation === "updateOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this,
@@ -1485,7 +1489,8 @@ export class HookedCollection<
     const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ options: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
     let ids: InferIdType<TSchema>[] | undefined;
     if (wantsIds) {
-      ids = (await this.#collection.find(filter, { projection: { _id: 1 }, ...(operation === "deleteOne" ? { limit: 1 } : {}) }).toArray()).map(({ _id }) => _id);
+      options?.signal?.throwIfAborted();
+      ids = (await raceSignal(options?.signal, this.#collection.find(filter, { projection: { _id: 1 }, ...(operation === "deleteOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
     }
     const argsOrig = [filter, options] as const;
     const invocationSymbol = Symbol(operation);
@@ -1496,10 +1501,12 @@ export class HookedCollection<
         args: argsOrig,
         ...(operation === "deleteOne" ? { _id: ids?.[0] } : { _ids: ids }),
         invocationSymbol,
+        signal: options?.signal,
         thisArg: this
       },
       "args",
       beforeListeners,
+      options?.signal,
     );
     try {
       const result = await this.#tryCatchDelete(
@@ -1507,6 +1514,7 @@ export class HookedCollection<
           caller: operation,
           argsOrig,
           args: chainedArgs,
+          signal: options?.signal,
           parentInvocationSymbol: invocationSymbol,
           filter
         },
@@ -1525,11 +1533,11 @@ export class HookedCollection<
           }
           return {
             type: "DeleteResult",
-            result: await this.#collection.deleteOne(
+            result: await raceSignal(options?.signal, this.#collection.deleteOne(
               // @ts-expect-error
               chainedFilter?._id === _id ? chainedFilter : { $and: [chainedFilter, { _id }] },
               chainedArgs[1]
-            )
+            ))
           };
         },
         async (attemptedIds) => {
@@ -1575,12 +1583,14 @@ export class HookedCollection<
           args: argsOrig,
           argsOrig,
           result,
+          signal: options?.signal,
           ...(operation === "deleteOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this
         },
         "result",
         afterSuccessListeners,
+        options?.signal
       );
       return chainedResult || result;
     }
@@ -1592,6 +1602,7 @@ export class HookedCollection<
         {
           args: chainedArgs,
           argsOrig,
+          signal: options?.signal,
           ...(operation === "deleteOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this,
@@ -1652,7 +1663,7 @@ export class HookedCollection<
           args: [filter, options]
         },
         "args",
-        ({ beforeHooksResult: [options] }) => this.#collection.count(options),
+        ({ beforeHooksResult: [options] }) => raceSignal(options?.signal, this.#collection.count(options)),
         options,
         {
           event: InternalEvents["count*"],
@@ -1679,7 +1690,7 @@ export class HookedCollection<
           args: [options]
         },
         "args",
-        ({ beforeHooksResult: [options] }) => this.#collection.estimatedDocumentCount(options as AmendedEstimatedDocumentCountOptions),
+        ({ beforeHooksResult: [options] }) => raceSignal(options?.signal, this.#collection.estimatedDocumentCount(options as AmendedEstimatedDocumentCountOptions)),
         options,
         {
           event: InternalEvents["count*"],
@@ -1706,7 +1717,7 @@ export class HookedCollection<
           args: [filter, options]
         },
         "args",
-        ({ beforeHooksResult: [options] }) => this.#collection.countDocuments(options),
+        ({ beforeHooksResult: [options] }) => raceSignal(options?.signal, this.#collection.countDocuments(options)),
         options,
         {
           event: InternalEvents["count*"],
@@ -1749,6 +1760,7 @@ export class HookedCollection<
               args: [filter, options],
               argsOrig,
               filter,
+              signal: options?.signal,
               parentInvocationSymbol
             },
             async ({
@@ -1773,11 +1785,17 @@ export class HookedCollection<
               if (options) {
                 return {
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
-                  result: await this.#collection.findOneAndDelete(
+                  result: await raceSignal(options?.signal, this.#collection.findOneAndDelete(
                     // @ts-expect-error
                     filter?._id === _id ? filter : { $and: [{ _id }, filter] },
                     options
-                  )
+                  ))
+                } as {
+                  type: "ModifyResult",
+                  result: ModifyResult<TSchema>
+                } | {
+                  type: "Document",
+                  result: WithId<TSchema> | null
                 };
               }
               return {
@@ -1789,11 +1807,13 @@ export class HookedCollection<
               };
             },
             async () => {
-              let result: ModifyResult<TSchema> | Document;
+              let result: ModifyResult<TSchema> | WithId<TSchema> | null;
               if (options) {
-                result = await this.#collection.findOneAndDelete(filter, options);
+                result = await raceSignal(options?.signal, this.#collection.findOneAndDelete(filter, options));
               }
-              result = await this.#collection.findOneAndDelete(filter);
+              else {
+                result = await this.#collection.findOneAndDelete(filter);
+              }
               return {
                 type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
                 result
@@ -1847,6 +1867,7 @@ export class HookedCollection<
             {
               args: [filter, update, options],
               argsOrig,
+              signal: options?.signal,
               caller: "findOneAndUpdate",
               filterMutator: {
                 filter,
@@ -1880,12 +1901,18 @@ export class HookedCollection<
               if (options) {
                 return {
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
-                  result: await this.#collection.findOneAndUpdate(
+                  result: await raceSignal(options?.signal, this.#collection.findOneAndUpdate(
                     // @ts-expect-error
                     chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
                     chainedFilterMutator.mutator,
                     options
-                  )
+                  ))
+                } as {
+                  type: "ModifyResult",
+                  result: ModifyResult<TSchema>
+                } | {
+                  type: "Document",
+                  result: WithId<TSchema> | null
                 };
               }
               return {
@@ -1901,7 +1928,7 @@ export class HookedCollection<
             async () => {
               let result;
               if (options) {
-                result = await this.#collection.findOneAndUpdate(filter, update, options);
+                result = await raceSignal(options?.signal, this.#collection.findOneAndUpdate(filter, update, options));
               }
               else {
                 result = await this.#collection.findOneAndUpdate(filter, update);
@@ -1960,6 +1987,7 @@ export class HookedCollection<
             {
               args: [filter, replacement, options],
               argsOrig,
+              signal: options?.signal,
               caller: "findOneAndReplace",
               filterMutator: {
                 filter,
@@ -1992,12 +2020,18 @@ export class HookedCollection<
               if (options) {
                 return {
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
-                  result: await this.#collection.findOneAndReplace(
+                  result: await raceSignal(options?.signal, this.#collection.findOneAndReplace(
                     // @ts-expect-error
                     chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
                     chainedFilterMutator.replacement,
                     options
-                  )
+                  ))
+                } as {
+                  type: "ModifyResult",
+                  result: ModifyResult<TSchema>
+                } | {
+                  type: "Document",
+                  result: WithId<TSchema> | null
                 };
               }
               return {
@@ -2013,7 +2047,7 @@ export class HookedCollection<
             async () => {
               let result;
               if (options) {
-                result = await this.#collection.findOneAndReplace(filter, replacement, options);
+                result = await raceSignal(options?.signal, this.#collection.findOneAndReplace(filter, replacement, options));
               }
               else {
                 result = await this.#collection.findOneAndReplace(filter, replacement);

@@ -1,5 +1,5 @@
 import { StandardDefineHookOptions } from "../awaiatableEventEmitter.js";
-import { ResultOrError } from "../commentedTypes.js";
+import { ResultOrError } from "./commentedTypes.js";
 import { AfterInternalSuccessEmitArgs, AfterInternalSuccessEmitArgsNoArgs, AfterInternalErrorEmitArgs, AfterInternalErrorEmitArgsNoArgs, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, NoReturns, ReturnsArgs, ReturnsResult, AfterInternalEmitArgsNoArgs, CommonDefinitionWithCaller } from "./helpersTypes.js";
 
 type StripCaller<O extends { emitArgs: { caller: any } }> = {
