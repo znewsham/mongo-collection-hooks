@@ -16,7 +16,14 @@ export {
   AmendedAggregateOptions,
   AmendedReplaceOptions,
   AmendedDistinctOptions,
-  AmendedFindOptions
+  AmendedFindOptions,
+  AmendedCountDocumentsOptions,
+  AmendedCountOptions,
+  AmendedEstimatedDocumentCountOptions,
+  AmendedFindOneAndDeleteOptions,
+  AmendedFindOneAndReplaceOptions,
+  AmendedFindOneAndUpdateOptions,
+  AmendedFindOneOptions,
 } from "./collectionEvents.js";
 
 export { UpdateCallArgs, ReplaceCallArgs, CollectionHookedEventMap } from "./collectionEvents.js";
@@ -36,6 +43,7 @@ type _BeforeAfterEventNames = keyof BeforeAfterErrorCollectionEventDefinitions<D
   | keyof BeforeAfterErrorGenericCursorEventDefinitions<Document>
   | keyof BeforeAfterErrorSharedEventDefinitions<Document>;
 type BeforeAfterEventNames<limit extends _BeforeAfterEventNames = _BeforeAfterEventNames> = _BeforeAfterEventNames & limit;
+export type BeforeAfterEventNamesOfName<k extends string> = `before.${k}` | `after.${k}` | `after.${k}.error` | `after.${k}.success`;
 
 type MapWithCaller={[k in string]: { caller: string | undefined }}
 

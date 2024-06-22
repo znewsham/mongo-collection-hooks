@@ -2,66 +2,68 @@ import { StandardDefineHookOptions } from "../awaiatableEventEmitter.js";
 import { Abortable, Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "./commentedTypes.js";
 
 
-/**
- * @external
- */
-export type RecursiveKeyOf<TObj extends object> = {
-  [TKey in keyof TObj & (string | number)]:
-    RecursiveKeyOfHandleValue<TObj[TKey], `${TKey}`>;
-}[keyof TObj & (string | number)];
+// /**
+//  * @external
+//  */
+// type RecursiveKeyOf<TObj extends object> = {
+//   [TKey in keyof TObj & (string | number)]:
+//     RecursiveKeyOfHandleValue<TObj[TKey], `${TKey}`>;
+// }[keyof TObj & (string | number)];
 
-type RecursiveKeyOfInner<TObj extends object> = {
-  [TKey in keyof TObj & (string | number)]:
-    RecursiveKeyOfHandleValue<TObj[TKey], `.${TKey}`>;
-}[keyof TObj & (string | number)];
+// type RecursiveKeyOfInner<TObj extends object> = {
+//   [TKey in keyof TObj & (string | number)]:
+//     RecursiveKeyOfHandleValue<TObj[TKey], `.${TKey}`>;
+// }[keyof TObj & (string | number)];
+
+// /**
+//  * @external
+//  * @noFlatten
+//  */
+// type RecursiveKeyOfHandleValue<TValue, Text extends string> =
+//   TValue extends object[]
+//     ? Text | `${Text}${RecursiveKeyOfInner<TValue[0]>}`
+//     : TValue extends any[]
+//       ? Text
+//       : TValue extends object
+//         ? Text | `${Text}${RecursiveKeyOfInner<TValue>}`
+//         : Text;
+
+// /**
+//  * @external
+//  * @noFlatten
+//  */
+// type RecursiveProjectionOf<TObj extends object> = {
+//   [TKey in keyof TObj & (string | number)]:
+//   RecursiveProjectionOfHandleValue<TObj[TKey], `${TKey}`>;
+// }
+
+
+// /**
+//  * @external
+//  * @noFlatten
+//  */
+// type RecursiveProjectionOfHandleValue<TValue, Text extends string> =
+//   TValue extends object[]
+//     ? Text | `${Text}${RecursiveKeyOfInner<TValue[0]>}`
+//     : TValue extends any[]
+//       ? Text
+//       : TValue extends object
+//         ? Text | `${Text}${RecursiveKeyOfInner<TValue>}`
+//         : Text;
 
 /**
  * @external
  * @noFlatten
  */
-type RecursiveKeyOfHandleValue<TValue, Text extends string> =
-  TValue extends object[]
-    ? Text | `${Text}${RecursiveKeyOfInner<TValue[0]>}`
-    : TValue extends any[]
-      ? Text
-      : TValue extends object
-        ? Text | `${Text}${RecursiveKeyOfInner<TValue>}`
-        : Text;
+// export type NestedProjectionOfTSchema<TObj extends object> = {
+//   [k in keyof TObj]?: TObj[k] extends object[]
+//     ? 1 | 0 | NestedProjectionOfTSchema<TObj[k][0]>
+//     : TObj[k] extends object
+//       ? 1 | 0 | NestedProjectionOfTSchema<TObj[k]>
+//       : 1 | 0
+// };
 
-/**
- * @external
- * @noFlatten
- */
-export type RecursiveProjectionOf<TObj extends object> = {
-  [TKey in keyof TObj & (string | number)]:
-  RecursiveProjectionOfHandleValue<TObj[TKey], `${TKey}`>;
-}
-
-
-/**
- * @external
- * @noFlatten
- */
-type RecursiveProjectionOfHandleValue<TValue, Text extends string> =
-  TValue extends object[]
-    ? Text | `${Text}${RecursiveKeyOfInner<TValue[0]>}`
-    : TValue extends any[]
-      ? Text
-      : TValue extends object
-        ? Text | `${Text}${RecursiveKeyOfInner<TValue>}`
-        : Text;
-
-/**
- * @external
- * @noFlatten
- */
-export type NestedProjectionOfTSchema<TObj extends object> = {
-  [k in keyof TObj]?: TObj[k] extends object[]
-    ? 1 | 0 | NestedProjectionOfTSchema<TObj[k][0]>
-    : TObj[k] extends object
-      ? 1 | 0 | NestedProjectionOfTSchema<TObj[k]>
-      : 1 | 0
-};
+export type NestedProjectionOfTSchema<TObj extends object> = { [k in string]: any };
 
 
 

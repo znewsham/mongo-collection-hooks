@@ -42,14 +42,14 @@ import {
   HookedFindCursorInterface,
   FindCursorHookedEventMap,
   AggregationCursorHookedEventMap,
-  SkipDocument
+  SkipDocument,
 } from "./events/index.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from './utils.js';
-import { StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
-import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
+import { ChainedCallbackEventMap, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
+import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, AmendedFindOneOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 import { BulkWriteError, BulkWriteResult } from './bulkError.js';
 import { maybeParallel } from './maybeParallel.js';
@@ -95,8 +95,7 @@ type HookedCollectionOptions<TSchema extends Document> = {
 };
 
 export class HookedCollection<
-  //TSchemaOrDocument,
-  TSchema extends Document// = TSchemaOrDocument extends Document ? TSchemaOrDocument : Document
+  TSchema extends Document = Document
 > extends AbstractHookedCollection<TSchema> implements HookedCollectionInterface<TSchema> {
   #collection: Collection<TSchema>;
   static Events = Events;
@@ -208,7 +207,7 @@ export class HookedCollection<
     );
   }
 
-  findOne<T extends Document = TSchema>(filter?: Filter<TSchema>, options?: AmendedFindOptions<TSchema> | undefined): Promise<T | null> {
+  findOne<T extends Document = TSchema>(filter?: Filter<TSchema>, options?: AmendedFindOneOptions<TSchema> | undefined): Promise<T | null> {
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -251,7 +250,7 @@ export class HookedCollection<
     return this.#collection.find() as unknown as FindCursor<T>;
   }
 
-  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: AmendedFindOptions<TSchema, "before.find">): HookedFindCursor<T> {
+  find<T extends Document = TSchema>(filter: Filter<TSchema> = {}, options?: AmendedFindOptions<TSchema>): HookedFindCursor<T> {
     const invocationSymbol = Symbol("find");
     const [chainedFilter, chainedOptions] = this.#ee.callSyncChainWithKey(
       Events.before.find,
@@ -374,7 +373,7 @@ export class HookedCollection<
     )
   }
 
-  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions<CollectionHookedEventMap<TSchema>>): Promise<InsertOneResult<TSchema>> {
+  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions): Promise<InsertOneResult<TSchema>> {
     const argsOrig = [doc, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
@@ -700,7 +699,7 @@ export class HookedCollection<
       acknowledged: false,
       deletedCount: 0
     };
-    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isBeforeGreedy, invocationOptions?.signal);
+    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection as NestedProjectionOfTSchema<TSchema>, isBeforeGreedy, invocationOptions?.signal);
     const invocationSymbol = Symbol("delete");
     const attemptedIds: InferIdType<TSchema>[] = [];
 
@@ -1055,7 +1054,7 @@ export class HookedCollection<
       return result as Awaited<ReturnType<T1>>["result"];
     }
     const attemptedIds: InferIdType<TSchema>[] = [];
-    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection, isCacheWarmed, invocationOptions?.signal);
+    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection as NestedProjectionOfTSchema<TSchema>, isCacheWarmed, invocationOptions?.signal);
     const afterDocumentCache = new DocumentCache(this.#collection, unionOfProjections(afterProjections), false, invocationOptions?.signal);
     const invocationSymbol = Symbol("update");
 
@@ -1223,7 +1222,11 @@ export class HookedCollection<
     return result as Awaited<ReturnType<T1>>["result"];
   }
 
-  replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: AmendedReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>> {
+  replaceOne(
+    filter: Filter<TSchema>,
+    replacement: WithoutId<TSchema>,
+    options?: AmendedReplaceOptions | undefined
+  ): Promise<Document | UpdateResult<TSchema>> {
     const argsOrig = [filter, replacement, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],

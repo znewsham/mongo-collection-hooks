@@ -37,6 +37,8 @@ import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMa
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js";
 import { BeforeAfterErrorSharedEventDefinitions, SharedCallbackArgsAndReturn } from "./sharedEvents.js";
+import { HookedCollection } from "../hookedCollection.js";
+import { BeforeAfterEventNamesOfName } from "./index.js";
 
 type WithDocumentDefineHookOptions<TSchema extends Document, ARGS> = {
   /** The projection used when you call `.fullDocument()` it will be combined with the `projection` of every other hook being ran */
@@ -293,26 +295,50 @@ type CollectionCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCall
 /**
  * @external
  */
-export type CollectionHookedEventMap<TSchema extends Document> = CollectionCallbackArgsAndReturn<TSchema>
+export type CollectionHookedEventMap<TSchema extends Document = Document> = CollectionCallbackArgsAndReturn<TSchema>
   & FindCursorHookedEventMap<TSchema>
   & AggregationCursorHookedEventMap<TSchema>
   & SharedCallbackArgsAndReturn<TSchema>
 
 ;
-export type AmendedInsertOneOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertOne"> & InsertOneOptions;
-export type AmendedBulkWriteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "insertMany"> & BulkWriteOptions & AlwaysAttemptOperation;
-export type AmendedUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "updateOne" | "updateMany"> & UpdateOptions & AlwaysAttemptOperation & MaybeOrderedBatch;
-export type AmendedDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "deleteOne" | "deleteMany"> & DeleteOptions & AlwaysAttemptOperation & MaybeOrderedBatch;
-export type AmendedAggregateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "aggregate"> & AggregateOptions;
-export type AmendedReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "replaceOne"> & ReplaceOptions & AlwaysAttemptOperation;
-export type AmendedDistinctOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "distinct"> & DistinctOptions;
-export type AmendedFindOptions<TSchema extends Document, caller extends "before.find" | "before.findOne" = "before.find" | "before.findOne", HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, caller> & FindOptions<TSchema>
-export type AmendedEstimatedDocumentCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "estimatedDocumentCount"> & EstimatedDocumentCountOptions;
-export type AmendedCountOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "count"> & CountOptions;
-export type AmendedCountDocumentsOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "countDocuments"> & CountDocumentsOptions;
-export type AmendedFindOneAndDeleteOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndDelete"> & FindOneAndDeleteOptions & AlwaysAttemptOperation;
-export type AmendedFindOneAndUpdateOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndUpdate"> & FindOneAndUpdateOptions & AlwaysAttemptOperation;
-export type AmendedFindOneAndReplaceOptions<HEM extends ChainedCallbackEventMap = ChainedCallbackEventMap> = StandardInvokeHookOptions<HEM, "findOneAndReplace"> & FindOneAndReplaceOptions & AlwaysAttemptOperation;
+
+
+export type AmendedInsertOneOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "insertOne" | "insert">> & InsertOneOptions;
+export type AmendedBulkWriteOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "insertMany" | "insert">> & BulkWriteOptions & AlwaysAttemptOperation;
+export type AmendedUpdateOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "updateOne" | "updateMany" | "insert" | "update">> & UpdateOptions & AlwaysAttemptOperation & MaybeOrderedBatch;
+export type AmendedDeleteOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "deleteOne" | "deleteMany" | "delete">> & DeleteOptions & AlwaysAttemptOperation & MaybeOrderedBatch;
+export type AmendedAggregateOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "aggregate" | "aggregation.cursor.next" | "aggregation.cursor.toArray" | "aggregation.cursor.forEach" | "aggregation.cursor.execute" | "aggregation.cursor.asyncIterator" | "aggregation.cursor.close" | "cursor.next" | "cursor.toArray" | "cursor.forEach" | "cursor.execute" | "cursor.asyncIterator" | "cursor.close">> & AggregateOptions;
+export type AmendedReplaceOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "replaceOne" | "insert" | "update">> & ReplaceOptions & AlwaysAttemptOperation;
+export type AmendedDistinctOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "distinct">> & DistinctOptions;
+  export type AmendedFindOptions<
+  TSchema extends Document
+>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "find" | "find.cursor.next" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.execute" | "find.cursor.asyncIterator" | "find.cursor.close" | "cursor.next" | "cursor.toArray" | "cursor.forEach" | "cursor.execute" | "cursor.asyncIterator" | "cursor.close">> & FindOptions<TSchema>
+
+export type AmendedFindOneOptions<
+  TSchema extends Document,
+>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOne" | "findOne*">> & FindOptions<TSchema>
+export type AmendedEstimatedDocumentCountOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "estimatedDocumentCount" | "count*">> & EstimatedDocumentCountOptions;
+export type AmendedCountOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "count" | "count*">> & CountOptions;
+export type AmendedCountDocumentsOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "countDocuments" | "count*">> & CountDocumentsOptions;
+
+export type AmendedFindOneAndDeleteOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndDelete" | "delete" | "findOne*">> & FindOneAndDeleteOptions & AlwaysAttemptOperation;
+export type AmendedFindOneAndUpdateOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndUpdate" | "update" | "insert" | "findOne*">> & FindOneAndUpdateOptions & AlwaysAttemptOperation;
+export type AmendedFindOneAndReplaceOptions
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndReplace" | "update" | "insert" | "findOne*">> & FindOneAndReplaceOptions & AlwaysAttemptOperation;
 
 type AlwaysAttemptOperation = {
   /** In the case of underlying implementations with a partial view (e.g., client side) always attempt the underlying operation, omitting those explicitly attempted. Only useful if `update` or `delete` hooks are in use */

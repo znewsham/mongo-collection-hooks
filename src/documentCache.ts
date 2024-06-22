@@ -1,5 +1,6 @@
 import type { Collection, InferIdType, WithId, Document } from "mongodb";
 import { NestedProjectionOfTSchema } from "./events/helpersTypes.js";
+import { raceSignal } from "./raceSignal.js";
 
 export class DocumentCache<TSchema extends Document> {
   #map: Map<InferIdType<TSchema>, Promise<WithId<TSchema> | null>> = new Map();

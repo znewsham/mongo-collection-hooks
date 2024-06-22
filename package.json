@@ -1,6 +1,6 @@
 {
   "name": "mongo-collection-hooks",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "lib/index.js",
   "type": "module",
@@ -21,10 +21,6 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
-    },
-    "./legacy": {
-      "types": "./legacy/index.d.ts",
-      "default": "./legacy/index.js"
     }
   },
   "devDependencies": {
@@ -33,6 +29,6 @@
     "mongo-query-compiler": "^1.0.7",
     "mongodb": "^5.9.2",
     "typedoc": "^0.25.13",
-    "typescript": "^5.5.2"
+    "typescript": "^5.4.2"
   }
 }
