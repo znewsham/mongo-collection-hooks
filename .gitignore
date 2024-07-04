@@ -1,5 +1,6 @@
 lib
-legacy
+es2015
+es2020
 node_modules
 package-lock.json
 *.scratch.*

@@ -10,7 +10,7 @@ import { setTimeout } from "node:timers/promises";
 export function defineUpdateMany() {
   describe("updateMany", () => {
     it("should pass the options between before hooks correctly", async () => {
-      const result = await hooksChain("before.updateMany", "args", ({ hookedCollection }) => hookedCollection.updateMany({ _id: "test" }, { $set: { value: "test" } }), [[[{ _id: "test" }, { $set: { value: "test" } }]], [[{ _id: "test" }, { $set: { value: "test" } }]]]);
+      const result = await hooksChain("before.updateMany", "args", ({ hookedCollection }) => hookedCollection.updateMany({ _id: "test" }, { $set: { value: "test" } }), [[{ _id: "test" }, { $set: { value: "test" } }], [{ _id: "test" }, { $set: { value: "test" } }]]);
       assert.deepEqual(result.acknowledged, true, "It updated");
     });
 

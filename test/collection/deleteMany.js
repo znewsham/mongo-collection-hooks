@@ -106,7 +106,7 @@ export function defineDeleteMany() {
 
       await assert.rejects(
         async () => {
-          await hookedCollection.deleteMany({});
+          console.log(await hookedCollection.deleteMany({}));
         },
         (thrown) => {
           if (!(thrown instanceof BulkWriteError)) {

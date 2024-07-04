@@ -1,15 +1,5 @@
-import { FakeFindCursor } from "../findCursor/fakeFindCursor.js";
 import { HookedAggregationCursor } from "../../lib/hookedAggregationCursor.js";
-
-export class FakeAggregationCursor extends FakeFindCursor {
-  #pipeline;
-  #options;
-  constructor(data, pipeline, options) {
-    super(data);
-    this.#pipeline = pipeline;
-    this.#options = options;
-  }
-}
+import { FakeAggregationCursor } from "mongo-collection-helpers/testHelpers";
 
 
 /**

@@ -1,8 +1,9 @@
 import type {
   Document
 } from "mongodb"
+export { NestedProjectionOfTSchema } from "mongo-collection-helpers";
 import { CallbackAndOptionsOfEm, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
-import { NestedProjectionOfTSchema, SkipDocument } from "./helpersTypes.js";
+import { SkipDocument } from "./helpersTypes.js";
 import { BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions, CollectionHookedEventMap } from "./collectionEvents.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
@@ -33,7 +34,7 @@ export { HookedCollectionInterface } from "./hookedCollectionInterface.js";
 export { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
 export { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 
-export { NestedProjectionOfTSchema, CollectionBeforeAfterErrorEventDefinitions }
+export { CollectionBeforeAfterErrorEventDefinitions }
 export { SkipDocument };
 
 

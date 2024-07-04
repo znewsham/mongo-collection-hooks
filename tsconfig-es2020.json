@@ -1,8 +1,8 @@
 {
-  "include": ["src/*", "src/events/events.ts"],
+  "include": ["src/*", "src/redis/*"],
   "exclude": ["src/__*"],
   "compilerOptions": {
-    "outDir": "legacy",
+    "outDir": "es2020",
     "module": "CommonJS",
     "moduleResolution": "Node",
     "target": "ES2020",

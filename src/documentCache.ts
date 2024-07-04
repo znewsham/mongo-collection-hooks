@@ -1,5 +1,5 @@
 import type { Collection, InferIdType, WithId, Document } from "mongodb";
-import { NestedProjectionOfTSchema } from "./events/helpersTypes.js";
+import type { NestedProjectionOfTSchema } from "mongo-collection-helpers";
 import { raceSignal } from "./raceSignal.js";
 
 export class DocumentCache<TSchema extends Document> {
