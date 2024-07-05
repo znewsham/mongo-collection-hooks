@@ -219,14 +219,17 @@ export class HookedCollection<
         InternalEvents.findOne,
         { args: [filter, options] },
         "args",
-        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
+        async ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
           if (chainedFilter && options) {
-            return raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter, chainedOptions));
+            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter, chainedOptions));
+            return ret && this.#transform(ret);
           }
           if (chainedFilter) {
-            return raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter));
+            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter));
+            return ret && this.#transform(ret);
           }
-          return raceSignal(options?.signal, this.#collection.findOne<T>());
+          const ret = await raceSignal(options?.signal, this.#collection.findOne<T>());
+          return ret && this.#transform(ret);
         },
         options,
         {
@@ -1786,13 +1789,15 @@ export class HookedCollection<
                 };
               }
               if (options) {
+                const result = await raceSignal(options?.signal, this.#collection.findOneAndDelete(
+                  // @ts-expect-error
+                  filter?._id === _id ? filter : { $and: [{ _id }, filter] },
+                  options
+                ));
+
                 return {
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
-                  result: await raceSignal(options?.signal, this.#collection.findOneAndDelete(
-                    // @ts-expect-error
-                    filter?._id === _id ? filter : { $and: [{ _id }, filter] },
-                    options
-                  ))
+                  result: result && this.#transform(result)
                 } as {
                   type: "ModifyResult",
                   result: ModifyResult<TSchema>
@@ -1801,21 +1806,30 @@ export class HookedCollection<
                   result: WithId<TSchema> | null
                 };
               }
+              const result = await this.#collection.findOneAndDelete(
+                // @ts-expect-error
+                filter?._id === _id ? filter : { $and: [{ _id }, filter] }
+              );
+              result.value = result.value && this.#transform(result.value);
               return {
                 type: "ModifyResult",
-                result: await this.#collection.findOneAndDelete(
-                  // @ts-expect-error
-                  filter?._id === _id ? filter : { $and: [{ _id }, filter] }
-                )
+                result
               };
             },
             async () => {
               let result: ModifyResult<TSchema> | WithId<TSchema> | null;
               if (options) {
                 result = await raceSignal(options?.signal, this.#collection.findOneAndDelete(filter, options));
+                if (options.includeResultMetadata === false) {
+                  result = result && this.#transform(result);
+                }
+                else {
+                  result.value = result.value && this.#transform(result.value);
+                }
               }
               else {
                 result = await this.#collection.findOneAndDelete(filter);
+                result.value = result.value && this.#transform(result.value);
               }
               return {
                 type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
@@ -1902,14 +1916,15 @@ export class HookedCollection<
               }
 
               if (options) {
+                const result = await raceSignal(options?.signal, this.#collection.findOneAndUpdate(
+                  // @ts-expect-error
+                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
+                  chainedFilterMutator.mutator,
+                  options
+                ));
                 return {
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
-                  result: await raceSignal(options?.signal, this.#collection.findOneAndUpdate(
-                    // @ts-expect-error
-                    chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
-                    chainedFilterMutator.mutator,
-                    options
-                  ))
+                  result: result && this.#transform(result)
                 } as {
                   type: "ModifyResult",
                   result: ModifyResult<TSchema>
@@ -1918,13 +1933,15 @@ export class HookedCollection<
                   result: WithId<TSchema> | null
                 };
               }
+              const result = await this.#collection.findOneAndUpdate(
+                // @ts-expect-error
+                chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
+                chainedFilterMutator.mutator
+              );
+              result.value = result.value && this.#transform(result.value);
               return {
                 type: "ModifyResult",
-                result: await this.#collection.findOneAndUpdate(
-                  // @ts-expect-error
-                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
-                  chainedFilterMutator.mutator
-                )
+                result
               };
             },
             // no hooks...
@@ -1932,9 +1949,16 @@ export class HookedCollection<
               let result;
               if (options) {
                 result = await raceSignal(options?.signal, this.#collection.findOneAndUpdate(filter, update, options));
+                if (options.includeResultMetadata === false) {
+                  result = result && this.#transform(result);
+                }
+                else {
+                  result.value = result.value && this.#transform(result.value);
+                }
               }
               else {
                 result = await this.#collection.findOneAndUpdate(filter, update);
+                result.value = result.value && this.#transform(result.value);
               }
               return {
                 type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
@@ -2021,14 +2045,15 @@ export class HookedCollection<
                 }
               }
               if (options) {
+                const result = await raceSignal(options?.signal, this.#collection.findOneAndReplace(
+                  // @ts-expect-error
+                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
+                  chainedFilterMutator.replacement,
+                  options
+                ))
                 return {
                   type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",
-                  result: await raceSignal(options?.signal, this.#collection.findOneAndReplace(
-                    // @ts-expect-error
-                    chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
-                    chainedFilterMutator.replacement,
-                    options
-                  ))
+                  result: result && this.#transform(result)
                 } as {
                   type: "ModifyResult",
                   result: ModifyResult<TSchema>
@@ -2037,13 +2062,15 @@ export class HookedCollection<
                   result: WithId<TSchema> | null
                 };
               }
+              const result = await this.#collection.findOneAndReplace(
+                // @ts-expect-error
+                chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
+                chainedFilterMutator.replacement
+              );
+              result.value = result.value && this.#transform(result.value);
               return {
                 type: "ModifyResult",
-                result: await this.#collection.findOneAndReplace(
-                  // @ts-expect-error
-                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [{ _id }, chainedFilterMutator.filter] },
-                  chainedFilterMutator.replacement
-                )
+                result
               };
             },
             // no hooks...
@@ -2051,9 +2078,16 @@ export class HookedCollection<
               let result;
               if (options) {
                 result = await raceSignal(options?.signal, this.#collection.findOneAndReplace(filter, replacement, options));
+                if (options.includeResultMetadata === false) {
+                  result = result && this.#transform(result);
+                }
+                else {
+                  result.value = result.value && this.#transform(result.value);
+                }
               }
               else {
                 result = await this.#collection.findOneAndReplace(filter, replacement);
+                result.value = result.value && this.#transform(result.value);
               }
               return {
                 type: options?.includeResultMetadata === false ? "Document" : "ModifyResult",

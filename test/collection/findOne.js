@@ -1,6 +1,7 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
-import { hookInParallel, hooksChain } from "./helpers.js";
+import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
+import { Test } from "../testClass.js";
 
 export function defineFindOne() {
   describe("findOne", () => {
@@ -23,6 +24,18 @@ export function defineFindOne() {
         /BAD CALL/,
         "It rejected correctly"
       );
+    });
+
+    it("the transform should work", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }], { transform: doc => new Test(doc) });
+      hookedCollection.on("after.findOne", ({
+        result
+      }) => {
+        assert.ok(result instanceof Test, "transformed in hook");
+      });
+      const result = await hookedCollection.findOne({});
+
+      assert.ok(result instanceof Test, "transform worked");
     });
   });
 }

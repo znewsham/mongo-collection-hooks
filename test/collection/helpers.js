@@ -7,9 +7,9 @@ import { FakeCollection } from "./fakeCollection.js";
  * @typedef {import("../../src/events.js").EventNames} EventNames
  */
 
-export function getHookedCollection(data = []) {
+export function getHookedCollection(data = [], { transform } = {}) {
   const fakeCollection = new FakeCollection(data);
-  const hookedCollection = new HookedCollection(fakeCollection);
+  const hookedCollection = new HookedCollection(fakeCollection, { transform });
   return {
     fakeCollection,
     hookedCollection

@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
 import { assertImplements } from "../helpers.js";
 import { deleteTests } from "./delete.js";
+import { Test } from "../testClass.js";
 
 export function defineFindOneAndDelete() {
   describe("findOneAndDelete", () => {
@@ -34,6 +35,18 @@ export function defineFindOneAndDelete() {
       }) => result);
       const result = await hookedCollection.findOneAndDelete({ _id: "test" }, { includeResultMetadata: false });
       assert.deepEqual(result, { _id: "test" });
+    });
+
+    it("the transform should work", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }], { transform: doc => new Test(doc) });
+      hookedCollection.on("after.findOneAndDelete", ({
+        result
+      }) => {
+        assert.ok(result.value instanceof Test, "transformed in hook");
+      });
+      const result = await hookedCollection.findOneAndDelete({});
+
+      assert.ok(result.value instanceof Test, "transform worked");
     });
     deleteTests("findOneAndDelete");
   });

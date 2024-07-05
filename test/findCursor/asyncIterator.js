@@ -1,6 +1,8 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCursor } from "./fakeFindCursor.js";
+import { getHookedCollection } from "../collection/helpers.js";
+import { Test } from "../testClass.js";
 
 
 async function gatherFromIterator(cursor) {
@@ -177,6 +179,13 @@ export function defineAsyncIteratorTests() {
       assert.strictEqual(afterNextSymbol, beforeSymbol, "The after symbols should match");
       assert.strictEqual(beforeCaller, "find.cursor.asyncIterator", "The before caller should match");
       assert.strictEqual(afterCaller, "find.cursor.asyncIterator", "The after caller should match");
+    });
+
+    it("the transform should work", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }], { transform: doc => new Test(doc) });
+      for await(const doc of hookedCollection.find({})) {
+        assert.ok(doc instanceof Test, "transform worked");
+      }
     });
   });
 }

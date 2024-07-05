@@ -353,6 +353,14 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
     );
   }
 
+  map<T>(transform: (doc: TSchema) => T): HookedFindCursor<T> {
+    // this looks weird, but it means you'll get a transform for the first map, but not subsequent ones
+    // because map just returns the cursor, `a.map(() => {}); a.map(() => {})` and `a.map(() => {}).map(() => {})` are equivalent
+    const _transform = this.#transform;
+    this.#transform = undefined;
+    return super.map<T>((doc) => transform(_transform ? _transform(doc) : doc)) as HookedFindCursor<T>;
+  }
+
   async toArray(): Promise<TSchema[]> {
     return this.#tryCatchEmit(
       this.#ee,
@@ -364,7 +372,11 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             if (this.#cursor.id === undefined) {
               await this.#triggerInit();
             }
-            return this.#cursor.toArray();
+            const array = await this.#cursor.toArray();
+            if (!array?.map || !this.#transform) {
+              return array;
+            }
+            return array.map(doc => this.#transform ? this.#transform(doc) : doc);
           }, invocationSymbol),
           undefined,
           undefined,
@@ -447,7 +459,10 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
             if (this.#cursor.id === undefined) {
               await this.#triggerInit();
             }
-            return this.#cursor.forEach(chainedIterator);
+            return this.#cursor.forEach((doc) => {
+              const transformed = this.#transform ? this.#transform(doc) : doc;
+              chainedIterator(transformed);
+            });
           }, invocationSymbol),
           undefined,
           [iterator],
@@ -524,7 +539,12 @@ export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedF
       const iterator = this.#cursor[Symbol.asyncIterator]();
       started = true;
       for await (const item of iterator) {
-        yield item;
+        if (this.#transform) {
+          yield this.#transform(item);
+        }
+        else {
+          yield item;
+        }
       }
     }
     catch (e) {

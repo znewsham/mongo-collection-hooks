@@ -2,6 +2,8 @@
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { declareSimpleTests, hookInParallel, hooksChain } from "./helpers.js";
+import { getHookedCollection } from "../collection/helpers.js";
+import { Test } from "../testClass.js";
 
 export function defineForEachTests() {
   describe("forEach", () => {
@@ -43,6 +45,13 @@ export function defineForEachTests() {
     });
     it("should pass the result between (generic) after hooks correctly", async () => {
       await hookInParallel("after.cursor.forEach.success", ({ hookedCursor }) => hookedCursor.forEach(() => {}));
+    });
+
+    it("the transform should work", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }], { transform: doc => new Test(doc) });
+      await hookedCollection.find({}).forEach((doc) => {
+        assert.ok(doc instanceof Test, "transform worked");
+      });
     });
   });
 }
