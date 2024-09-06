@@ -5,14 +5,14 @@
   "main": "lib/index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --enable-source-maps --test test/index.js",
+    "test:watch": "node --enable-source-maps --watch --test test/index.js",
+    "test:watch-only": "node --enable-source-maps --watch --test-only test/index.js",
+    "test:coverage": "NODE_V8_COVERAGE=.coverage npm test && npx c8 report --clean --temp-directory \"./.coverage/\" --report-dir \"./.coverage-report/\" --src \"./lib/*\" --reporter lcov --reporter json-summary"
   },
   "types": "./lib/index.d.ts",
   "author": "",
   "license": "ISC",
-  "peerDependencies": {
-    "mongodb": "^5.9.2"
-  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -20,6 +20,11 @@
     }
   },
   "devDependencies": {
+    "@blastjs/minimongo": "^0.1.0",
+    "c8": "^9.1.0",
+    "mongo-query-compiler": "^1.0.7",
+    "mongodb": "^5.9.2",
+    "typedoc-plugin-markdown": "^4.0.3",
     "typescript": "^5.4.5"
   }
 }

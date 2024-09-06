@@ -32,7 +32,7 @@ export async function tryCatchEmit<
   beforeAfterEmitArgs: (BEAO | AEAO) & (BEAO & AEAO),
   chainArgs: BeforeAfterErrorEventDefinitions<TSchema>[IE]["before"]["returnEmitName"] extends never ? false : true,
   chainResult: BeforeAfterErrorEventDefinitions<TSchema>[IE]["after"]["returnEmitName"] extends never ? false : true,
-  chainArgsKey: string | undefined,
+  chainArgsKey: ((keyof (BEAO | AEAO) & (BEAO & AEAO) | "args") & string) | undefined,
   internalEvent: IE,
   ...additionalInternalEvents: (keyof BeforeAfterErrorEventDefinitions<TSchema>)[]
 ): Promise<Awaited<ReturnType<T>>> {

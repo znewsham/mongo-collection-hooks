@@ -1,5 +1,6 @@
 {
   "include": ["src/*"],
+  "exclude": ["src/__*"],
   "compilerOptions": {
     "outDir": "lib",
     "module": "NodeNext",

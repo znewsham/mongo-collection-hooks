@@ -86,7 +86,7 @@ export class ChainedAwaiatableEventEmitter<
       if (listenerResult instanceof Promise) {
         throw new Error(`${eventName as string} Hook returned a Promise. This is a mistake`);
       }
-      if (listenerResult) {
+      if (listenerResult !== undefined) {
         chainedValue = listenerResult;
       }
     }
@@ -224,14 +224,14 @@ export class ChainedAwaiatableEventEmitter<
     ...eventNames: Key<K, SUPEM>[]
   ) {
     const origKey = `${chainKey}Orig`;
-    const origChainedValue = emitArgs[origKey];
-    let chainedValue = origChainedValue;
+    let chainedValue = emitArgs[chainKey];
+    const origChainedValue = chainedValue;
     for (const eventName of [masterEventName, ...eventNames]) {
       const chainedResult = await this.#callAwaitableChainWithKey(
         eventName as Key<K, SUPEM>,
         {
+          ...emitArgs,
           [chainKey]: chainedValue,
-          ...emitArgs
         },
         chainKey,
         origChainedValue

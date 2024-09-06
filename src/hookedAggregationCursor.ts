@@ -164,6 +164,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       },
       false,
       true,
+      undefined,
       InternalEvents["aggregate.cursor.toArray"],
       InternalEvents["cursor.toArray"],
     );
@@ -182,6 +183,7 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       },
       true,
       false,
+      "args",
       "aggregate.cursor.forEach",
       "cursor.forEach"
     );

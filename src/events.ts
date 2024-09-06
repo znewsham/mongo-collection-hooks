@@ -17,7 +17,9 @@ import type {
   FindOptions,
   AggregateOptions,
   CountDocumentsOptions,
-  CountOptions
+  CountOptions,
+  WithoutId,
+  ReplaceOptions
 } from "mongodb"
 import { HookedFindCursor } from "./hookedFindCursor.js";
 import { ChainedAwaiatableEventEmitter, ChainedCallbackEventMap, ConvertCallbackArgsToArgs, ListenerCallback } from "./awaiatableEventEmitter.js";
@@ -26,10 +28,11 @@ import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 
 
 type InsertOneCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>, InsertOneOptions | undefined];
-type FindCallArgs<TSchema> = readonly [Filter<TSchema>, FindOptions<TSchemaOrDocument<TSchema>> | undefined];
+type FindCallArgs<TSchema> = readonly [Filter<TSchema> | undefined, FindOptions<TSchemaOrDocument<TSchema>> | undefined];
 type AggregateCallArgs = readonly [Document[], AggregateOptions | undefined];
 type InsertManyCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>[], BulkWriteOptions | undefined];
-type UpdateCallArgs<TSchema> = readonly [Filter<TSchema>, UpdateFilter<TSchema> | Partial<TSchema>, UpdateOptions | undefined];
+export type UpdateCallArgs<TSchema> = readonly [Filter<TSchema>, UpdateFilter<TSchema> | Partial<TSchema>, UpdateOptions | undefined];
+export type ReplaceCallArgs<TSchema> = readonly [Filter<TSchema>, WithoutId<TSchema>, ReplaceOptions | undefined];
 type DeleteCallArgs<TSchema> = readonly [Filter<TSchema>, DeleteOptions | undefined];
 type DistinctCallArgs<TSchema> = readonly [keyof WithId<TSchema>, Filter<TSchema>, DistinctOptions];
 type TSchemaOrDocument<T> = T extends Document ? T : Document;
@@ -162,10 +165,10 @@ type TopLevelCall<O extends CommonDefinition & { result: any }> = {
 };
 
 type InsertCommon<TSchema, This> = {
-  caller: "insertOne" | "insertMany",
-  args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema>,
+  caller: "insertOne" | "insertMany" | "updateOne" | "updateMany" | "replaceOne",
+  args: InsertManyCallArgs<TSchema> | InsertOneCallArgs<TSchema> | UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
   thisArg: This,
-  result: InsertOneResult<TSchema>,
+  result: InsertOneResult<TSchema> | UpdateResult | Document,
   custom: {
     /** The document to be inserted */
     doc: OptionalUnlessRequiredId<TSchema>
@@ -188,14 +191,16 @@ type DeleteCommon<TSchema, This> = {
 }
 
 type UpdateCommon<TSchema, This> = {
-  caller: "updateOne" | "updateMany",
-  args: UpdateCallArgs<TSchema>,
+  caller: "updateOne" | "updateMany" | "replaceOne",
+  args: UpdateCallArgs<TSchema> | ReplaceCallArgs<TSchema>,
   thisArg: This,
-  result: UpdateResult,
+  result: UpdateResult | Document,
   custom: {
+    _id: InferIdType<TSchema>,
     filterMutator: {
       filter: Filter<TSchema>,
-      mutator: UpdateFilter<TSchema> | Partial<TSchema>
+      mutator?: UpdateFilter<TSchema> | Partial<TSchema>,
+      replacement?: WithoutId<TSchema>
     }
   },
   isPromise: true
@@ -285,7 +290,7 @@ type CursorParamsWithArgsAndResult<
 };
 export type BeforeAfterErrorEventDefinitions<TSchema, This = any> = {
   "cursor.execute": CursorParams<TSchema, HookedFindCursor<TSchema> | HookedAggregationCursor<TSchema>, {
-    caller: "find" | "aggregate" | "find.cursor.toArray" | "find.cursor.count" | "find.cursor.forEach" | "find.cursor.asyncIterator" | "cursor.asyncIterator",
+    caller: "find" | "aggregate" | "find.cursor.next" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.asyncIterator" | "cursor.asyncIterator",
   }>
   "cursor.next": CursorParamsWithResult<TSchema, HookedFindCursor<TSchema> | HookedAggregationCursor<TSchema>, {
     caller: "find" | "aggregate" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.asyncIterator" | "cursor.asyncIterator",
@@ -305,7 +310,7 @@ export type BeforeAfterErrorEventDefinitions<TSchema, This = any> = {
     result: never,
   }>,
   "find.cursor.execute": CursorParams<TSchema, HookedFindCursor<TSchema>, {
-    caller: "find" | "find.cursor.toArray" | "find.cursor.count" | "find.cursor.forEach" | "find.cursor.asyncIterator"
+    caller: "find" | "find.cursor.toArray" | "find.cursor.next" | "find.cursor.forEach" | "find.cursor.asyncIterator"
   }>,
   "find.cursor.next": CursorParamsWithResult<TSchema, HookedFindCursor<TSchema>, {
     caller: "find" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.asyncIterator",
@@ -341,7 +346,7 @@ export type BeforeAfterErrorEventDefinitions<TSchema, This = any> = {
     caller: "aggregate",
     result: TSchema[]
   }>,
-  "aggregate.cursor.forEach": CursorParamsWithArgsAndResult<TSchema, HookedAggregationCursor<any>, {
+  "aggregate.cursor.forEach": CursorParamsWithArgs<TSchema, HookedAggregationCursor<any>, {
     caller: "aggregate",
     result: void,
     args: [iterator: (doc: TSchema) => boolean | void]
@@ -356,6 +361,11 @@ export type BeforeAfterErrorEventDefinitions<TSchema, This = any> = {
     thisArg: This,
     result: HookedAggregationCursor<any>,
     isPromise: false
+  }>,
+  findOne: TopLevelCall<{
+    args: FindCallArgs<TSchema>,
+    thisArg: This,
+    result: TSchema
   }>,
   find: TopLevelCall<{
     args: FindCallArgs<TSchema>,
@@ -377,7 +387,7 @@ export type BeforeAfterErrorEventDefinitions<TSchema, This = any> = {
     before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<InsertCommon<TSchema, This>>, "doc">,
     after: NoReturns<AfterInternalEmitArgs<InsertCommon<TSchema, This>>>,
     error: NoReturns<AfterInternalErrorEmitArgs<InsertCommon<TSchema, This>>>,
-    caller: "insertOne" | "insertMany",
+    caller: InsertCommon<TSchema, This>["caller"],
   },
   deleteOne: TopLevelCall<{
     args: DeleteCallArgs<TSchema>,
@@ -388,28 +398,33 @@ export type BeforeAfterErrorEventDefinitions<TSchema, This = any> = {
     before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<DeleteCommon<TSchema, This>>, "filter">,
     after: NoReturns<AfterInternalEmitArgs<DeleteCommon<TSchema, This>>>,
     error: NoReturns<AfterInternalErrorEmitArgs<DeleteCommon<TSchema, This>>>,
-    caller: "deleteOne" | "deleteMany",
+    caller: DeleteCommon<TSchema, This>["caller"],
   },
   deleteMany: TopLevelCall<{
     args: DeleteCallArgs<TSchema>,
     thisArg: This,
     result: DeleteResult
   }>,
+  replaceOne: TopLevelCall<{
+    args: ReplaceCallArgs<TSchema>,
+    thisArg: This,
+    result: UpdateResult<TSchemaOrDocument<TSchema>> | Document
+  }>,
   updateOne: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
     thisArg: This,
-    result: UpdateResult
+    result: UpdateResult<TSchemaOrDocument<TSchema>>
   }>,
   updateMany: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
     thisArg: This,
-    result: UpdateResult
+    result: UpdateResult<TSchemaOrDocument<TSchema>>
   }>,
   update: {
     before: ReturnsNamedEmitArg<BeforeInternalEmitArgs<UpdateCommon<TSchema, This>>, "filterMutator">,
     after: NoReturns<AfterInternalEmitArgs<UpdateCommon<TSchema, This>>>,
     error: NoReturns<AfterInternalErrorEmitArgs<UpdateCommon<TSchema, This>>>,
-    caller: "updateOne" | "updateMany",
+    caller: UpdateCommon<TSchema, This>["caller"],
   },
   distinct: TopLevelCall<{
     args: DistinctCallArgs<TSchema>,
@@ -520,7 +535,9 @@ const beforeAfterEvents = [
   ...selfOneOrMany("insert"),
   ...selfOneOrMany("delete"),
   ...selfOneOrMany("update"),
+  "replaceOne",
   "find",
+  "findOne",
   "aggregate",
   "distinct",
   ...FindCursorEventsSuffixes,
