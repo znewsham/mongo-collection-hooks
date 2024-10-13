@@ -1,4 +1,5 @@
 import type { AggregateOptions, AggregationCursor, AnyBulkWriteOperation, BSONSerializeOptions, BulkWriteOptions, BulkWriteResult, ChangeStream, ChangeStreamDocument, ChangeStreamOptions, CollStats, CollStatsOptions, Collection, CommandOperationOptions, CountDocumentsOptions, CountOptions, CreateIndexesOptions, DeleteOptions, DeleteResult, DistinctOptions, Document, DropCollectionOptions, EnhancedOmit, EstimatedDocumentCountOptions, Filter, FindCursor, FindOneAndDeleteOptions, FindOneAndReplaceOptions, FindOneAndUpdateOptions, FindOptions, Hint, IndexDescription, IndexInformationOptions, IndexSpecification, InsertManyResult, InsertOneOptions, InsertOneResult, ListIndexesCursor, ListIndexesOptions, ListSearchIndexesCursor, ListSearchIndexesOptions, ModifyResult, OperationOptions, OptionalUnlessRequiredId, OrderedBulkOperation, ReadConcern, ReadPreference, RenameOptions, ReplaceOptions, SearchIndexDescription, UnorderedBulkOperation, UpdateFilter, UpdateOptions, UpdateResult, WithId, WithoutId, WriteConcern } from "mongodb"
+import { MaybeStrictFilter } from "./events/collectionEvents.js";
 
 export abstract class AbstractHookedCollection<TSchema extends Document> implements Collection<TSchema> {
   #collection: Collection<TSchema>
@@ -105,55 +106,55 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
   }
 
   abstract aggregate<T extends Document = Document>(pipeline?: Document[] | undefined, options?: AggregateOptions | undefined): AggregationCursor<T>;
-  abstract count(filter?: Filter<TSchema> | undefined, options?: CountOptions | undefined): Promise<number>;
+  abstract count(filter?: MaybeStrictFilter<TSchema> | undefined, options?: CountOptions | undefined): Promise<number>;
 
   abstract countDocuments(filter?: Document | undefined, options?: CountDocumentsOptions | undefined): Promise<number>;
 
-  abstract deleteMany(filter?: Filter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult>;
-  abstract deleteOne(filter?: Filter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult>;
+  abstract deleteMany(filter?: MaybeStrictFilter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult>;
+  abstract deleteOne(filter?: MaybeStrictFilter<TSchema> | undefined, options?: DeleteOptions | undefined): Promise<DeleteResult>;
 
   abstract distinct(key: string): Promise<any[]>;
-  abstract distinct(key: string, filter: Filter<TSchema>): Promise<any[]>;
-  abstract distinct(key: string, filter: Filter<TSchema>, options: DistinctOptions): Promise<any[]>;
-  abstract distinct<Key extends keyof WithId<TSchema>>(key: Key, filter: Filter<TSchema>, options: DistinctOptions): Promise<any[]>;
+  abstract distinct(key: string, filter: MaybeStrictFilter<TSchema>): Promise<any[]>;
+  abstract distinct(key: string, filter: MaybeStrictFilter<TSchema>, options: DistinctOptions): Promise<any[]>;
+  abstract distinct<Key extends keyof WithId<TSchema>>(key: Key, filter: MaybeStrictFilter<TSchema>, options: DistinctOptions): Promise<any[]>;
 
   abstract estimatedDocumentCount(options?: EstimatedDocumentCountOptions | undefined): Promise<number>;
 
   abstract find(): FindCursor<WithId<TSchema>>;
-  abstract find(filter: Filter<TSchema>, options?: FindOptions<Document> | undefined): FindCursor<WithId<TSchema>>;
-  abstract find<T extends Document>(filter: Filter<TSchema>, options?: FindOptions<Document> | undefined): FindCursor<T>;
-  abstract find(filter: Filter<TSchema>, options: FindOptions): FindCursor<WithId<TSchema>>;
+  abstract find(filter: MaybeStrictFilter<TSchema>, options?: FindOptions<Document> | undefined): FindCursor<WithId<TSchema>>;
+  abstract find<T extends Document>(filter: MaybeStrictFilter<TSchema>, options?: FindOptions<Document> | undefined): FindCursor<T>;
+  abstract find(filter: MaybeStrictFilter<TSchema>, options: FindOptions): FindCursor<WithId<TSchema>>;
 
   abstract findOne(): Promise<WithId<TSchema> | null>;
-  abstract findOne(filter: Filter<TSchema>): Promise<WithId<TSchema> | null>;
-  abstract findOne(filter: Filter<TSchema>, options: FindOptions<Document>): Promise<WithId<TSchema> | null>;
+  abstract findOne(filter: MaybeStrictFilter<TSchema>): Promise<WithId<TSchema> | null>;
+  abstract findOne(filter: MaybeStrictFilter<TSchema>, options: FindOptions<Document>): Promise<WithId<TSchema> | null>;
   abstract findOne<T = TSchema>(): Promise<T | null>;
-  abstract findOne<T = TSchema>(filter: Filter<TSchema>): Promise<T | null>;
-  abstract findOne<T = TSchema>(filter: Filter<TSchema>, options?: FindOptions<Document> | undefined): Promise<T | null>;
-  abstract findOne(filter: Filter<TSchema>, options: FindOptions): Promise<WithId<TSchema> | null>;
+  abstract findOne<T = TSchema>(filter: MaybeStrictFilter<TSchema>): Promise<T | null>;
+  abstract findOne<T = TSchema>(filter: MaybeStrictFilter<TSchema>, options?: FindOptions<Document> | undefined): Promise<T | null>;
+  abstract findOne(filter: MaybeStrictFilter<TSchema>, options: FindOptions): Promise<WithId<TSchema> | null>;
 
-  abstract findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
-  abstract findOneAndDelete(filter: Filter<TSchema>, options: FindOneAndDeleteOptions): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndDelete(filter: Filter<TSchema>): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndDelete(filter: Filter<TSchema>, options?: FindOneAndDeleteOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null>;
+  abstract findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options: FindOneAndDeleteOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  abstract findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options: FindOneAndDeleteOptions): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndDelete(filter: MaybeStrictFilter<TSchema>): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options?: FindOneAndDeleteOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null>;
 
-  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
-  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions): Promise<WithId<TSchema> | null>;
-  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndUpdate(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: FindOneAndUpdateOptions): Promise<ModifyResult<TSchema> | WithId<TSchema> | null>;
+  abstract findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
+  abstract findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options: FindOneAndUpdateOptions): Promise<WithId<TSchema> | null>;
+  abstract findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options?: FindOneAndUpdateOptions): Promise<ModifyResult<TSchema> | WithId<TSchema> | null>;
 
-  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
-  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>): Promise<ModifyResult<TSchema>>;
-  abstract findOneAndReplace(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: FindOneAndReplaceOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null>;
+  abstract findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  abstract findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options: FindOneAndReplaceOptions): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>): Promise<ModifyResult<TSchema>>;
+  abstract findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options?: FindOneAndReplaceOptions): Promise<WithId<TSchema> | ModifyResult<TSchema> | null>;
 
   abstract insertMany(docs: OptionalUnlessRequiredId<TSchema>[], options?: BulkWriteOptions | undefined): Promise<InsertManyResult<TSchema>>;
   abstract insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: InsertOneOptions | undefined): Promise<InsertOneResult<TSchema>>;
-  abstract replaceOne(filter: Filter<TSchema>, replacement: WithoutId<TSchema>, options?: ReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>>;
-  abstract updateMany(filter: Filter<TSchema>, update: UpdateFilter<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>>;
-  abstract updateOne(filter: Filter<TSchema>, update: UpdateFilter<TSchema> | Partial<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>>;
+  abstract replaceOne(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options?: ReplaceOptions | undefined): Promise<Document | UpdateResult<TSchema>>;
+  abstract updateMany(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>>;
+  abstract updateOne(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema> | Partial<TSchema>, options?: UpdateOptions | undefined): Promise<UpdateResult<TSchema>>;
 
 }

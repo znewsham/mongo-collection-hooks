@@ -39,7 +39,7 @@ export type BeforeAfterCallbackArgsAndReturn<
     {
       /** The original "thing", e.g. arguments, result, doc, or whatever before any hook was applied */
       [rek in BIM[k]["returnEmitName"] as `${rek}Orig`]: BIM[k] extends { returns: any } ? BIM[k]["emitArgs"][BIM[k]["returnEmitName"]] : never
-    } & BIM[k]["emitArgs"],
+    } & BIM[k]["emitArgs"] & { hookOptions: BIM[k] extends { options: StandardDefineHookOptions } ? BIM[k]["options"] : StandardDefineHookOptions },
     emitArgs: BIM[k]["emitArgs"],
     returns: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never,
     isPromise: BIM[k]["isPromise"],

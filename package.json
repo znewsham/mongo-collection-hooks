@@ -1,6 +1,6 @@
 {
   "name": "mongo-collection-hooks",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "",
   "main": "lib/index.js",
   "type": "module",
@@ -37,7 +37,7 @@
     "./es2015/*": "./es2015/*"
   },
   "dependencies": {
-    "mongo-collection-helpers": "^1.0.8"
+    "mongo-collection-helpers": "^1.0.13"
   },
   "devDependencies": {
     "@blastjs/minimongo": "^0.1.0",

@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 
-import { combineProjections, unionOfProjections, isProjectionExclusion } from "../lib/utils.js";
+import { combineProjections, unionOfProjections, isProjectionExclusion } from "mongo-collection-helpers";
 
 
 describe("utils", () => {

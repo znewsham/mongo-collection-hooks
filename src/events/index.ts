@@ -1,7 +1,7 @@
 import type {
   Document
 } from "mongodb"
-export { NestedProjectionOfTSchema } from "mongo-collection-helpers";
+export { ProjectionOfTSchema, NestedProjectionOfTSchema, FilterOfTSchema } from "mongo-collection-helpers";
 import { CallbackAndOptionsOfEm, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
 import { SkipDocument } from "./helpersTypes.js";
 import { BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions, CollectionHookedEventMap } from "./collectionEvents.js";
@@ -67,7 +67,7 @@ export type PartialCallbackMap<K extends keyof EM, EM extends ChainedCallbackEve
 }
 
 
-export type HookedListenerCallback<K extends keyof HEM, HEM extends ChainedCallbackEventMap> = ChainedListenerCallback<K, HEM>
+export type HookedListenerCallback<K extends keyof HEM, HEM extends ChainedCallbackEventMap> = ChainedListenerCallback<HEM, K>
 
 
 type ChainedCallbackEntryWithCaller = ChainedCallbackEntry & { caller: string | undefined };

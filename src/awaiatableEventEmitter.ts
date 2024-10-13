@@ -5,7 +5,10 @@
  */
 export type StandardDefineHookOptions = {
   /** A set of tags for this hook - e.g., "direct" or "raw" - which can be provided as one of the options to all operations to filter which hooks run at a high level*/
-  tags?: string[]
+  tags?: string[],
+
+  /** The name - only useful for debugging purposes, e.g., with instrumentation */
+  name?: string
 }
 
 /**
@@ -20,7 +23,7 @@ export type StandardInvokeHookOptions<
   /** Filter the hooks to only run those which don't include one of these tags */
   excludeTags?: string[],
   /** A function to run to determine whether a hook should be ran or not */
-  includeHook?: <HK extends K>(hookName: HK, hook: ChainedListenerCallback<HK, EM>, options?: EM[K]["options"]) => boolean,
+  includeHook?: <HK extends K>(hookName: HK, hook: ChainedListenerCallback<EM, HK>, options?: EM[K]["options"]) => boolean,
   /** An abort signal to allow interuption of long running operations - particularly useful in the case of *Many operations with individual hooks */
   signal?: AbortSignal
 }
@@ -38,9 +41,12 @@ export type ChainedCallbackEntry<EMITARGS = any, CBARGS extends EMITARGS = EMITA
 export type ChainedCallbackEventMap = Record<string, ChainedCallbackEntry>
 type DefaultChainedCallbackEventMap = ChainedCallbackEventMap;
 
-export type CallbackAndOptionsOfEm<EM extends ChainedCallbackEventMap, K extends keyof EM> = {
+export type CallbackAndOptionsOfEm<
+  EM extends ChainedCallbackEventMap,
+  K extends keyof EM
+> = {
   options?: EM[K]["options"],
-  listener: ChainedListenerCallback<K, EM>
+  listener: ChainedListenerCallback<EM, K>
 }
 
 type CallbackAndOptionsMap<
@@ -50,13 +56,13 @@ type CallbackAndOptionsMap<
 
 
 export type ChainedListenerCallback<
-  K extends keyof T,
-  T extends ChainedCallbackEventMap
+  EM extends ChainedCallbackEventMap,
+  K extends keyof EM,
 > = (
-  T[K]["callbackArgs"] extends object
-  ? (...args: [T[K]["callbackArgs"]]) => T[K]["isPromise"] extends false
-    ? T[K]["returns"] | void
-    : T[K]["returns"] | void | Promise<void | T[K]["returns"]>
+  EM[K]["callbackArgs"] extends object
+  ? (...args: [EM[K]["callbackArgs"]]) => EM[K]["isPromise"] extends false
+    ? EM[K]["returns"] | void
+    : EM[K]["returns"] | void | Promise<void | EM[K]["returns"]>
   : never
 )
 
@@ -100,7 +106,7 @@ export class ChainedAwaiatableEventEmitter<
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK | undefined,
     origChainedValue: CK extends undefined ? undefined : EM[K]["emitArgs"][CK],
-    listeners: ChainedListenerCallback<K, EM>[],
+    listenersWithOptions: CallbackAndOptionsOfEm<EM, K>[],
     signal: AbortSignal | undefined
   ): EM[K]["returns"] {
     const origKey = `${chainKey}Orig`;
@@ -109,14 +115,15 @@ export class ChainedAwaiatableEventEmitter<
     } = emitArgs;
     let chainedValue = origChainedValue;
 
-    for (const listener of listeners) {
+    for (const { listener, options } of listenersWithOptions) {
       if (signal?.aborted) {
         throw signal.reason;
       }
       const perListenerArgs: EM[K]["callbackArgs"] = {
         ...remainderOfEmitArgs,
         ...(chainKey && { [chainKey]: chainedValue }),
-        [origKey]: origChainedValue
+        [origKey]: origChainedValue,
+        hookOptions: options
       };
       const listenerResult = listener(perListenerArgs);
       if (listenerResult instanceof Promise) {
@@ -141,7 +148,7 @@ export class ChainedAwaiatableEventEmitter<
       chainKey,
       // @ts-expect-error
       chainKey === undefined ? undefined : emitArgs[chainKey],
-      this.relevantAwaitableListeners(eventName, options),
+      this.relevantAwaitableListenersWithOptions(eventName, options),
       options?.signal
     );
   }
@@ -153,13 +160,13 @@ export class ChainedAwaiatableEventEmitter<
     masterEventName: MK,
     ...otherEventNames: K[]
   ): void {
-    const listeners = [masterEventName, ...otherEventNames].flatMap(eventName => this.relevantAwaitableListeners(eventName, options));
+    const listenersWithOptions = [masterEventName, ...otherEventNames].flatMap(eventName => this.relevantAwaitableListenersWithOptions(eventName, options));
     return this.#callSyncChainWithKey(
       emitArgs,
       chainKey,
       // @ts-expect-error
       chainKey === undefined ? undefined : emitArgs[chainKey],
-      listeners,
+      listenersWithOptions,
       options?.signal
     );
   }
@@ -175,15 +182,16 @@ export class ChainedAwaiatableEventEmitter<
   ): void {
     [masterEventName, ...additionalEvents].flatMap(eventNameOrObject => {
       const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
-      const listeners = this.relevantAwaitableListeners(eventName, options);
+      const listenersWithOptions = this.relevantAwaitableListenersWithOptions(eventName, options);
       const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
-      listeners.forEach(listener => {
+      listenersWithOptions.forEach(({ listener, options: hookOptions }) => {
         if (options?.signal?.aborted) {
           throw options.signal.reason;
         }
         listener({
           ...emitArgs,
-          ...extraEmitArgs
+          ...extraEmitArgs,
+          hookOptions
         });
       });
     });
@@ -194,7 +202,7 @@ export class ChainedAwaiatableEventEmitter<
     emitArgs: EM[K]["emitArgs"],
     chainKey: CK,
     origChainedValue: EM[K]["emitArgs"][CK],
-    listeners: ChainedListenerCallback<K, EM>[],
+    listenersWithOptions: CallbackAndOptionsOfEm<EM, K>[],
     signal: AbortSignal | undefined
   ): Promise<EM[K]["returns"]> {
     const origKey = `${chainKey}Orig`;
@@ -204,14 +212,15 @@ export class ChainedAwaiatableEventEmitter<
 
     let chainedValue = emitArgs[chainKey];
 
-    for (const listener of listeners) {
+    for (const { listener, options: hookOptions } of listenersWithOptions) {
       if (signal?.aborted) {
         throw signal.reason;
       }
       const perListenerArgs: EM[K]["callbackArgs"] = {
         ...remainderOfEmitArgs,
         [chainKey]: chainedValue,
-        [origKey]: origChainedValue
+        [origKey]: origChainedValue,
+        hookOptions
       };
       const listenerResult = await listener(perListenerArgs);
       if (listenerResult !== undefined) {
@@ -233,7 +242,7 @@ export class ChainedAwaiatableEventEmitter<
       emitArgs,
       chainKey,
       origChainedValue,
-      this.relevantAwaitableListeners(eventName, options),
+      this.relevantAwaitableListenersWithOptions(eventName, options),
       options?.signal
     );
   }
@@ -249,15 +258,16 @@ export class ChainedAwaiatableEventEmitter<
   ) {
     return Promise.all([masterEventName, ...additionalEvents].flatMap(eventNameOrObject => {
       const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
-      const listeners = this.relevantAwaitableListeners(eventName, options);
+      const listenersWithOptions = this.relevantAwaitableListenersWithOptions(eventName, options);
       const extraEmitArgs = eventNameOrObject["emitArgs"] || {};
-      return listeners.map(listener => {
+      return listenersWithOptions.map(({ listener, options: hookOptions }) => {
         if (options?.signal?.aborted) {
           throw options.signal.reason;
         }
         return listener({
-        ...emitArgs,
-        ...extraEmitArgs
+          ...emitArgs,
+          ...extraEmitArgs,
+          hookOptions
         });
       });
     }));
@@ -288,7 +298,7 @@ export class ChainedAwaiatableEventEmitter<
         },
         chainKey,
         origChainedValue,
-        this.relevantAwaitableListeners(eventName, options),
+        this.relevantAwaitableListenersWithOptions(eventName, options),
         options?.signal
       );
       if (chainedResult !== undefined) {
@@ -301,7 +311,7 @@ export class ChainedAwaiatableEventEmitter<
     masterEventName: MK,
     emitArgs: EM[MK]["emitArgs"],
     chainKey: CK,
-    listeners: ChainedListenerCallback<MK, EM>[],
+    listenersWithOptions: CallbackAndOptionsOfEm<EM, MK>[],
     signal: AbortSignal | undefined
   ) : Promise<EM[MK]["returns"]> {
     let chainedValue = emitArgs[chainKey];
@@ -314,7 +324,7 @@ export class ChainedAwaiatableEventEmitter<
       },
       chainKey,
       origChainedValue,
-      listeners,
+      listenersWithOptions,
       signal
     );
     if (chainedResult !== undefined) {
@@ -326,7 +336,7 @@ export class ChainedAwaiatableEventEmitter<
   relevantAwaitableListeners<K extends keyof EM>(
     eventName: K,
     options?: StandardInvokeHookOptions<EM, K>
-  ): ChainedListenerCallback<K, EM>[] {
+  ): ChainedListenerCallback<EM, K>[] {
     const array = this.#listenersMap.get(eventName);
     if (!array) {
       return [];
@@ -335,7 +345,7 @@ export class ChainedAwaiatableEventEmitter<
     return filterHooksWithOptions(eventName, array, options).map(({ listener }) => listener);
   }
 
-  relevantAwaitableListenersWithOptions<K extends keyof EM & string>(
+  relevantAwaitableListenersWithOptions<K extends keyof EM>(
     eventName: K,
     options?: StandardInvokeHookOptions<EM, K>
   ): CallbackAndOptionsOfEm<EM, K>[] {
@@ -360,7 +370,7 @@ export class ChainedAwaiatableEventEmitter<
 
   awaitableListeners<K extends keyof EM>(
     eventName: K
-  ): ChainedListenerCallback<K, EM>[] {
+  ): ChainedListenerCallback<EM, K>[] {
     const array = this.#listenersMap.get(eventName);
     if (!array) {
       return [];
@@ -370,7 +380,7 @@ export class ChainedAwaiatableEventEmitter<
 
   addListener<K extends keyof EM>(
     eventName: K,
-    listener: ChainedListenerCallback<K, EM>,
+    listener: ChainedListenerCallback<EM, K>,
     options?: EM[K]["options"]
   ): this {
     if (!this.#listenersMap.has(eventName)) {
@@ -384,7 +394,7 @@ export class ChainedAwaiatableEventEmitter<
 
   awaitableOn<K extends keyof EM>(
     eventName: K,
-    listener: ChainedListenerCallback<K, EM>,
+    listener: ChainedListenerCallback<EM, K>,
     options?: EM[K]["options"]
   ): this {
     return this.addListener(eventName, listener, options);
@@ -392,7 +402,7 @@ export class ChainedAwaiatableEventEmitter<
 
   awaitableOff<K extends keyof EM>(
     eventName: K,
-    listener: ChainedListenerCallback<K, EM>
+    listener: ChainedListenerCallback<EM, K>
   ): this {
     const array = this.#listenersMap.get(eventName) as CallbackAndOptionsOfEm<EM, K>[];
     if (!array) {
