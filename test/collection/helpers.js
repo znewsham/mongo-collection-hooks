@@ -58,14 +58,16 @@ export async function hooksChain(hookName, chainKey, fn, hookResults = ["Hello",
   const { fakeCollection, hookedCollection } = getHookedCollection([{ _id: "test", value: 1 }, { _id: "test2", value: 2 }, { _id: "test3", value: 3 }]);
   hookedCollection.on(hookName, async ({
     [chainKey]: value,
-    [`${chainKey}Orig`]: valueOrig
+    [`${chainKey}Orig`]: valueOrig,
+    hookOptions
   }) => {
     first = performance.now();
     cachedValueOrig = valueOrig;
     assert.deepEqual(valueOrig, value, "In the first hook, the value and orig value match");
+    assert.deepEqual(hookOptions, { name: "test" }, "the hook options were also provided");
     await setTimeout(100);
     return hookResults[0];
-  });
+  }, { name: "test" });
   hookedCollection.on(hookName, async ({
     [chainKey]: value,
     [`${chainKey}Orig`]: valueOrig

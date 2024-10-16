@@ -27,7 +27,7 @@ import type {
   FindOneAndUpdateOptions
 } from "mongodb"
 
-import { NestedProjectionOfTSchema } from "mongo-collection-helpers";
+import { ProjectionOfTSchema, FilterOfTSchema } from "mongo-collection-helpers";
 
 import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
 import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
@@ -44,7 +44,7 @@ import { BeforeAfterEventNamesOfName } from "./index.js";
 
 type WithDocumentDefineHookOptions<TSchema extends Document, ARGS> = {
   /** The projection used when you call `.fullDocument()` it will be combined with the `projection` of every other hook being ran */
-  projection?: NestedProjectionOfTSchema<TSchema> | (({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema> }) => NestedProjectionOfTSchema<TSchema>)
+  projection?: ProjectionOfTSchema<TSchema> | (({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema> }) => ProjectionOfTSchema<TSchema>)
 }
 
 type AllowGreedyDefineHookOptions = {
@@ -57,7 +57,7 @@ type WithPreviousDocumentDefineHookOptions<TSchema extends Document, ARGS> = {
   fetchPrevious?: boolean,
 
   /** The projection used to populate the previousDoc it will be combined with the `fetchPreviousProjection` of every other hook being ran */
-  fetchPreviousProjection?: NestedProjectionOfTSchema<TSchema> | (({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema> }) => NestedProjectionOfTSchema<TSchema>)
+  fetchPreviousProjection?: ProjectionOfTSchema<TSchema> | (({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema> }) => ProjectionOfTSchema<TSchema>)
 }
 
 export type CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema extends Document> = BeforeAfterErrorCollectionEventDefinitions<TSchema>;
@@ -71,6 +71,9 @@ export type CollectionBeforeAfterErrorEventDefinitions<TSchema extends Document>
 type ShouldRun<TSchema extends Document, ARGS> = {
   shouldRun?({ argsOrig, thisArg }: { argsOrig: ARGS, thisArg: HookedCollectionInterface<TSchema>}): Promise<boolean> | boolean
 }
+
+type UpdateOrDeleteNDefineHookOptions<TSchema extends Document, CallArgs> = StandardDefineHookOptions
+  & ShouldRun<TSchema, CallArgs>
 
 type BeforeUpdateDefineHookOptions<TSchema extends Document> = StandardDefineHookOptions
   & ShouldRun<TSchema, UpdateCallArgs<TSchema>>
@@ -146,7 +149,7 @@ type UpdateCommon<TSchema extends Document> = {
     // TODO: this could be a SkipDocument too.
     filterMutator: {
       /** The filter used to identify the document. Originally this will the main filter, but you can return a mutated version per document. It will be combined with the document ID for the final update */
-      filter: Filter<TSchema>,
+      filter: MaybeStrictFilter<TSchema>,
       /** The per document mutator. Originally this will the main mutator, but you can return a mutated version per document - mutex with replacement */
       mutator?: UpdateFilter<TSchema> | Partial<TSchema>,
       /** In the case of replaceOne calls, this will be the provided replacement - mutex with mutator */
@@ -214,12 +217,12 @@ type DeleteCommon<TSchema extends Document> = {
   args: DeleteCallArgs<TSchema> | FindOneAndDeleteCallArgs<TSchema>,
   thisArg: HookedCollectionInterface<TSchema>,
   result: DeleteResult | WithId<TSchema> | ModifyResult<TSchema> | null,
-  beforeHookReturns: Filter<TSchema> | typeof SkipDocument,
+  beforeHookReturns: MaybeStrictFilter<TSchema> | typeof SkipDocument,
   custom: {
     /** The ID of the document to be deleted */
     _id: InferIdType<TSchema>,
     /** The filter used to identify the document. Originally this will the main filter, but you can return a mutated version per document. It will be combined with the document ID for the final deletion */
-    filter: Filter<TSchema>
+    filter: MaybeStrictFilter<TSchema>
   },
   isPromise: true
 }
@@ -301,9 +304,9 @@ export type CollectionHookedEventMap<TSchema extends Document = Document> = Coll
   & FindCursorHookedEventMap<TSchema>
   & AggregationCursorHookedEventMap<TSchema>
   & SharedCallbackArgsAndReturn<TSchema>
-
 ;
 
+type ReplaceProjection<Options extends { projection?: Document }, TSchema extends Document> = Omit<Options, "projection"> & { projection?: ProjectionOfTSchema<TSchema> | Document}
 
 export type AmendedInsertOneOptions
   = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "insertOne" | "insert">> & InsertOneOptions;
@@ -322,12 +325,12 @@ export type AmendedDistinctOptions
   export type AmendedFindOptions<
   TSchema extends Document
 >
-  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "find" | "find.cursor.next" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.execute" | "find.cursor.asyncIterator" | "find.cursor.close" | "cursor.next" | "cursor.toArray" | "cursor.forEach" | "cursor.execute" | "cursor.asyncIterator" | "cursor.close">> & FindOptions<TSchema>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "find" | "find.cursor.next" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.execute" | "find.cursor.asyncIterator" | "find.cursor.close" | "cursor.next" | "cursor.toArray" | "cursor.forEach" | "cursor.execute" | "cursor.asyncIterator" | "cursor.close">> & ReplaceProjection<FindOptions<TSchema>, TSchema>
 
 export type AmendedFindOneOptions<
   TSchema extends Document,
 >
-  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOne" | "findOne*">> & FindOptions<TSchema>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOne" | "findOne*">> & ReplaceProjection<FindOptions<TSchema>, TSchema>
 export type AmendedEstimatedDocumentCountOptions
   = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "estimatedDocumentCount" | "count*">> & EstimatedDocumentCountOptions;
 export type AmendedCountOptions
@@ -335,32 +338,36 @@ export type AmendedCountOptions
 export type AmendedCountDocumentsOptions
   = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "countDocuments" | "count*">> & CountDocumentsOptions;
 
-export type AmendedFindOneAndDeleteOptions
-  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndDelete" | "delete" | "findOne*">> & FindOneAndDeleteOptions & AlwaysAttemptOperation;
-export type AmendedFindOneAndUpdateOptions
-  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndUpdate" | "update" | "insert" | "findOne*">> & FindOneAndUpdateOptions & AlwaysAttemptOperation;
-export type AmendedFindOneAndReplaceOptions
-  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndReplace" | "update" | "insert" | "findOne*">> & FindOneAndReplaceOptions & AlwaysAttemptOperation;
+export type AmendedFindOneAndDeleteOptions<TSchema extends Document>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndDelete" | "delete" | "findOne*">> & ReplaceProjection<FindOneAndDeleteOptions, TSchema> & AlwaysAttemptOperation;
+export type AmendedFindOneAndUpdateOptions<TSchema extends Document>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndUpdate" | "update" | "insert" | "findOne*">> & ReplaceProjection<FindOneAndUpdateOptions, TSchema> & AlwaysAttemptOperation;
+export type AmendedFindOneAndReplaceOptions<TSchema extends Document>
+  = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "findOneAndReplace" | "update" | "insert" | "findOne*">> & ReplaceProjection<FindOneAndReplaceOptions, TSchema> & AlwaysAttemptOperation;
 
 type AlwaysAttemptOperation = {
   /** In the case of underlying implementations with a partial view (e.g., client side) always attempt the underlying operation, omitting those explicitly attempted. Only useful if `update` or `delete` hooks are in use */
   alwaysAttemptOperation?: boolean
 }
 
+
+export type MaybeStrictFilter<TSchema extends Document> = FilterOfTSchema<TSchema> | Filter<TSchema>
+
+
 type InsertOneCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>, AmendedInsertOneOptions | undefined];
 type InsertManyCallArgs<TSchema> = readonly [OptionalUnlessRequiredId<TSchema>[], AmendedBulkWriteOptions | undefined];
-type FindCallArgs<TSchema extends Document> = readonly [Filter<TSchema> | undefined, AmendedFindOptions<TSchema> | undefined];
+type FindCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema> | undefined, AmendedFindOptions<TSchema> | undefined];
 type AggregateCallArgs = readonly [Document[], AmendedAggregateOptions | undefined];
-export type UpdateCallArgs<TSchema> = readonly [Filter<TSchema>, UpdateFilter<TSchema> | Partial<TSchema>, AmendedUpdateOptions | undefined];
-export type ReplaceCallArgs<TSchema> = readonly [Filter<TSchema>, WithoutId<TSchema>, AmendedReplaceOptions | undefined];
-type DeleteCallArgs<TSchema> = readonly [Filter<TSchema>, AmendedDeleteOptions | undefined];
-type DistinctCallArgs<TSchema> = readonly [keyof WithId<TSchema>, Filter<TSchema>, AmendedDistinctOptions];
-type CountCallArgs<TSchema> = readonly [Filter<TSchema> | undefined, AmendedCountOptions | undefined];
+export type UpdateCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema>, UpdateFilter<TSchema> | Partial<TSchema>, AmendedUpdateOptions | undefined];
+export type ReplaceCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema>, WithoutId<TSchema>, AmendedReplaceOptions | undefined];
+type DeleteCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema>, AmendedDeleteOptions | undefined];
+type DistinctCallArgs<TSchema extends Document> = readonly [keyof WithId<TSchema>, MaybeStrictFilter<TSchema>, AmendedDistinctOptions];
+type CountCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema> | undefined, AmendedCountOptions | undefined];
 type EstimatedDocumentCountCallArgs = readonly [AmendedEstimatedDocumentCountOptions | undefined];
-type CountDocumentsCallArgs = readonly [Filter<Document> | undefined, AmendedCountDocumentsOptions | undefined];
-export type FindOneAndDeleteCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, AmendedFindOneAndDeleteOptions | undefined];
-export type FindOneAndUpdateCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, UpdateFilter<TSchema>, AmendedFindOneAndUpdateOptions | undefined];
-export type FindOneAndReplaceCallArgs<TSchema extends Document> = readonly [Filter<TSchema>, WithoutId<TSchema>, AmendedFindOneAndReplaceOptions | undefined];
+type CountDocumentsCallArgs = readonly [MaybeStrictFilter<Document> | undefined, AmendedCountDocumentsOptions | undefined];
+export type FindOneAndDeleteCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema>, AmendedFindOneAndDeleteOptions<TSchema> | undefined];
+export type FindOneAndUpdateCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema>, UpdateFilter<TSchema>, AmendedFindOneAndUpdateOptions<TSchema> | undefined];
+export type FindOneAndReplaceCallArgs<TSchema extends Document> = readonly [MaybeStrictFilter<TSchema>, WithoutId<TSchema>, AmendedFindOneAndReplaceOptions<TSchema> | undefined];
 
 export type UpsertCallArgs<
   TSchema extends Document,
@@ -481,7 +488,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     custom: {
       _id?: InferIdType<TSchema>[]
     },
-    options: StandardDefineHookOptions & { includeId?: boolean }
+    options: StandardDefineHookOptions & UpdateOrDeleteNDefineHookOptions<TSchema, DeleteCallArgs<TSchema>> & { includeId?: boolean }
   }>,
   deleteMany: TopLevelCall<{
     args: DeleteCallArgs<TSchema>,
@@ -490,7 +497,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     custom: {
       _ids?: InferIdType<TSchema>[]
     },
-    options: StandardDefineHookOptions & { includeIds?: boolean }
+    options: StandardDefineHookOptions & UpdateOrDeleteNDefineHookOptions<TSchema, DeleteCallArgs<TSchema>> & { includeIds?: boolean }
   }>,
   replaceOne: TopLevelCall<{
     args: ReplaceCallArgs<TSchema>,
@@ -504,7 +511,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     custom: {
       _id?: InferIdType<TSchema>
     },
-    options: StandardDefineHookOptions & { includeId?: boolean }
+    options: StandardDefineHookOptions & UpdateOrDeleteNDefineHookOptions<TSchema, UpdateCallArgs<TSchema>> & { includeId?: boolean }
   }>,
   updateMany: TopLevelCall<{
     args: UpdateCallArgs<TSchema>,
@@ -513,7 +520,7 @@ export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document>
     custom: {
       _ids?: InferIdType<TSchema>[]
     },
-    options: StandardDefineHookOptions & { includeIds?: boolean }
+    options: StandardDefineHookOptions & UpdateOrDeleteNDefineHookOptions<TSchema, UpdateCallArgs<TSchema>> & { includeIds?: boolean }
   }>,
   update: {
     before: ReturnsNamedEmitArg<Pick<UpdateCommon<TSchema>, "beforeHookReturns">
