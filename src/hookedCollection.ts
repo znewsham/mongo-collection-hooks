@@ -50,7 +50,7 @@ import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from 'mongo-collection-helpers';
-import { ChainedCallbackEventMap, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
+import { CallbackAndOptionsOfEm, ChainedCallbackEventMap, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
 import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, AmendedFindOneOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, MaybeStrictFilter, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 import { BulkWriteError, BulkWriteResult } from './bulkError.js';
@@ -1645,6 +1645,12 @@ export class HookedCollection<
       filter || {},
       options
     );
+  }
+
+  hooks<K extends keyof CollectionHookedEventMap<TSchema>>(
+    eventName: K
+  ): CallbackAndOptionsOfEm<CollectionHookedEventMap<TSchema>, K>[] {
+    return this.#ee.awaitableListenersWithOptions(eventName);
   }
 
   on<K extends keyof CollectionHookedEventMap<TSchema>>(
