@@ -25,6 +25,7 @@ export {
   AmendedFindOneAndReplaceOptions,
   AmendedFindOneAndUpdateOptions,
   AmendedFindOneOptions,
+  MaybeStrictFilter,
 } from "./collectionEvents.js";
 
 export { UpdateCallArgs, ReplaceCallArgs, CollectionHookedEventMap } from "./collectionEvents.js";

@@ -18,6 +18,7 @@ export {
   AmendedFindOneAndDeleteOptions,
   AmendedFindOneAndReplaceOptions,
   AmendedFindOneAndUpdateOptions,
-  AmendedFindOneOptions
+  AmendedFindOneOptions,
+  MaybeStrictFilter
 } from "./events/index.js";
 export { BulkWriteError } from "./bulkError.js";
