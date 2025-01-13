@@ -879,7 +879,7 @@ export class HookedCollection<
   async #tryCatchUpdate<
     BEAD extends CollectionBeforeAfterErrorEventDefinitions<TSchema>,
     T extends (callArgs: { invocationSymbol: symbol, _id: InferIdType<TSchema>, beforeHooksResult: BEAD["update"]["before"]["returns"] }) => Promise<TypedUpdateResult<TSchema>>,
-    T1 extends (ids?: InferIdType<TSchema>[]) => Promise<TypedUpdateResult<TSchema>>,
+    T1 extends (ids?: InferIdType<TSchema>[], result?: TypedUpdateResult<TSchema>) => Promise<TypedUpdateResult<TSchema>>,
     BEA extends BEAD["update"]["before"]["emitArgs"],
     OBEA extends Omit<BEA, "invocationSymbol" | "thisArg" | "getDocument" | "_id">
   >(
@@ -1206,7 +1206,10 @@ export class HookedCollection<
     }
     if (alwaysAttemptOperation && (limit !== 1 || attemptedIds.length === 0)) {
       invocationOptions?.signal?.throwIfAborted();
-      const partialResult = await noListenersFn(attemptedIds) as Awaited<ReturnType<T1>>;
+      const partialResult = await noListenersFn(attemptedIds, {
+        type: "UpdateResult",
+        result: result as UpdateResult
+      }) as Awaited<ReturnType<T1>>;
       if (partialResult.type === "UpdateResult") {
         const res = result as UpdateResult<TSchema>;
         res.acknowledged = res.acknowledged || partialResult.result.acknowledged;
@@ -1384,7 +1387,8 @@ export class HookedCollection<
             ))
           };
         },
-        async (attemptedIds) => {
+        async (attemptedIds, partialResult) => {
+          // this function must take care to not modify the selector in any way where possible - specifically in the case where an _id is provided
           if (operation === "updateOne" && attemptedIds?.length) {
             // this should never happen - the #tryCatchUpdate shouldn't send us here
             return {
@@ -1400,12 +1404,25 @@ export class HookedCollection<
           }
           let selector = chainedArgs[0] as Filter<TSchema>;
           if (attemptedIds?.length) {
-            // @ts-expect-error
-            selector = {
-              $and: [{ _id: { $nin: attemptedIds } }, selector]
+            if (selector._id) {
+              // TODO: this'll work for primatives only
+              if (attemptedIds.includes(selector._id as WithId<TSchema>["_id"])) {
+                // we've attempted it, fail out.
+                return {
+                  type: "UpdateResult",
+                  result: partialResult?.result as UpdateResult
+                };
+              }
+            }
+            else {
+              // @ts-expect-error
+              selector = {
+                $and: [{ _id: { $nin: attemptedIds } }, selector]
+              }
             }
           }
-          if (ids) {
+          // TODO: this'll work for primatives only
+          if (ids && (!selector._id || !ids.includes(selector._id as WithId<TSchema>["_id"]))) {
             // @ts-expect-error
             selector = {
               $and: [{ _id: { $in: ids } }, selector]
@@ -1658,7 +1675,8 @@ export class HookedCollection<
     listener: HookedListenerCallback<K, CollectionHookedEventMap<TSchema>>,
     options?: CollectionHookedEventMap<TSchema>[K]["options"]
   ) {
-    return this.#ee.awaitableOn(eventName, listener, options);
+    this.#ee.awaitableOn(eventName, listener, options);
+    return this;
   }
 
   off<
@@ -1667,7 +1685,8 @@ export class HookedCollection<
     eventName: K,
     listener: HookedListenerCallback<K, CollectionHookedEventMap<TSchema>>
   ) {
-    return this.#ee.awaitableOff(eventName, listener);
+    this.#ee.awaitableOff(eventName, listener);
+    return this;
   }
 
   count(filter?: MaybeStrictFilter<TSchema> | undefined, options?: AmendedCountOptions | undefined): Promise<number> {
