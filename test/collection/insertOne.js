@@ -39,6 +39,7 @@ export function defineInsertOne() {
       hookedCollection.on("before.insertOne", beforeInsertOne);
       hookedCollection.on("after.insertOne.success", afterInsertOne);
       const args = [{ _id: "test2" }, undefined];
+      debugger;
       await hookedCollection.insertOne(...args);
       assertImplements(beforeInsert.mock.calls[0].arguments, [{
         args,
@@ -47,7 +48,7 @@ export function defineInsertOne() {
         doc: args[0],
         docOrig: args[0],
         thisArg: hookedCollection
-      }], "called the beforeUpdate hook correctly");
+      }], "called the beforeInsert hook correctly");
       assertImplements(beforeInsertOne.mock.calls[0].arguments, [{
         args,
         argsOrig: args,
@@ -77,7 +78,7 @@ export function defineInsertOne() {
           acknowledged: true, insertedId: "test2"
         },
         thisArg: hookedCollection
-      }], "called the afterUpdate hook correctly");
+      }], "called the afterInsert hook correctly");
     });
 
     it("Should skip documents correctly", async () => {

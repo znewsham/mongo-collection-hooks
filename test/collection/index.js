@@ -16,6 +16,7 @@ import { defineEstimatedDocumentCount } from "./estimatedDocumentCount.js";
 import { defineFindOneAndUpdate } from "./findOneAndUpdate.js";
 import { defineFindOneAndReplace } from "./findOneAndReplace.js";
 import { defineFindOneAndDelete } from "./findOneAndDelete.js";
+import { defineChangeArgs } from "./changeArgs.js";
 
 describe("collection", () => {
   defineInsertOne();
@@ -35,4 +36,5 @@ describe("collection", () => {
   defineFindOneAndUpdate();
   defineFindOneAndReplace();
   defineFindOneAndDelete();
+  defineChangeArgs();
 });

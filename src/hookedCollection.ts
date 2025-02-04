@@ -1446,7 +1446,7 @@ export class HookedCollection<
       const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
         Events.afterSuccess[operation],
         {
-          args: argsOrig,
+          args: chainedArgs,
           argsOrig,
           result,
           signal: options?.signal,
@@ -1612,7 +1612,7 @@ export class HookedCollection<
       const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
         Events.afterSuccess[operation],
         {
-          args: argsOrig,
+          args: chainedArgs,
           argsOrig,
           result,
           signal: options?.signal,

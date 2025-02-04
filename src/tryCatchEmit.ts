@@ -48,7 +48,8 @@ export function getTryCatch<
     const invocationSymbol = Symbol(internalEvent);
     const argsOrig = beforeAfterEmitArgs["argsOrig"] || args;
 
-    let chainedArgs = args;
+    // @ts-expect-error hard to type - but it's the thing that will be chained.
+    let chainedArgs = chainArgsKey === "args" ? args : beforeAfterEmitArgs[chainArgsKey];
     const {
       after: afterEvent,
       before: beforeEvent,
@@ -125,7 +126,7 @@ export function getTryCatch<
           {
             invocationSymbol,
             ...(caller && { caller }),
-            ...(args && { args }),
+            ...(args && { args: chainArgsKey === "args" ? chainedArgs : args }),
             ...(argsOrig && { argsOrig }),
             ...(result !== undefined && { result }),
             ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
@@ -148,7 +149,7 @@ export function getTryCatch<
           {
             invocationSymbol,
             ...(caller && { caller }),
-            ...(args && { args }),
+            ...(args && { args: chainArgsKey === "args" ? chainedArgs : args }),
             ...(argsOrig && { argsOrig }),
             ...(result !== undefined && { result }),
             ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
