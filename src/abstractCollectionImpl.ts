@@ -33,6 +33,15 @@ export abstract class AbstractHookedCollection<TSchema extends Document> impleme
   get writeConcern(): WriteConcern | undefined {
     return this.#collection.writeConcern;
   }
+
+  _setCollection(collection: Collection<TSchema>) {
+    this.#collection = collection;
+  }
+
+  init() {
+    // exposed to allow extending/patching in the future.
+  }
+
   bulkWrite(operations: AnyBulkWriteOperation<TSchema>[], options?: BulkWriteOptions | undefined): Promise<BulkWriteResult> {
     return this.#collection.bulkWrite(operations, options);
   }
