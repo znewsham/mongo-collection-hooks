@@ -1683,6 +1683,14 @@ export class HookedCollection<
     return this.#ee.awaitableListenersWithOptions(eventName);
   }
 
+  allHooksWithOptions() {
+    return this.#ee.allListenersWithOptions().map(({ listener, eventName, options }) => ({
+      hook: listener,
+      eventName,
+      options
+    }));
+  }
+
   on<K extends keyof CollectionHookedEventMap<TSchema>>(
     eventName: K,
     listener: HookedListenerCallback<K, CollectionHookedEventMap<TSchema>>,

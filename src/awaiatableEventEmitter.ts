@@ -333,6 +333,14 @@ export class ChainedAwaiatableEventEmitter<
     return chainedValue;
   }
 
+  allListenersWithOptions() {
+    return [...this.#listenersMap.keys()].flatMap(key => this.#listenersMap.get(key)?.map(({ listener, options }) => ({
+      listener,
+      options,
+      eventName: key
+    })) || []);
+  }
+
   relevantAwaitableListeners<K extends keyof EM>(
     eventName: K,
     options?: StandardInvokeHookOptions<EM, K>
