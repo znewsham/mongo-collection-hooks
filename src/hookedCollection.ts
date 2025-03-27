@@ -127,6 +127,7 @@ export class HookedCollection<
     if (options?.transform) {
       this.#transform = options.transform;
     }
+    this.init();
   }
 
   aggregate<T extends Document>(pipeline: Document[], options?: AmendedAggregateOptions): AggregationCursor<T> {
@@ -194,6 +195,18 @@ export class HookedCollection<
       );
       throw e;
     }
+  }
+
+  /**
+   * This function should be used exclusively to allow for instrumentation
+   * it should be called at most once and calling this arbitrarily at runtime has undefined behaviour
+   * it's expected to be used as follows: myCollection._setCollection(instrument(myCollection.rawCollection()))
+   * this can be combined with patching the AbstractHookedCollection's init to ensure that all collections created will have an instrumented base collection
+   * @param collection the collection to use
+   */
+  _setCollection(collection: Collection<TSchema>) {
+    this.#collection = collection;
+    super._setCollection(collection);
   }
 
   rawCollection() {

@@ -17,6 +17,7 @@ import { defineFindOneAndUpdate } from "./findOneAndUpdate.js";
 import { defineFindOneAndReplace } from "./findOneAndReplace.js";
 import { defineFindOneAndDelete } from "./findOneAndDelete.js";
 import { defineChangeArgs } from "./changeArgs.js";
+import { defineInstrument } from "./instrument.js";
 
 describe("collection", () => {
   defineInsertOne();
@@ -37,4 +38,5 @@ describe("collection", () => {
   defineFindOneAndReplace();
   defineFindOneAndDelete();
   defineChangeArgs();
+  defineInstrument();
 });
