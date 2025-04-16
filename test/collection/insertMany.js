@@ -132,5 +132,23 @@ export function defineInsertMany() {
       assert.deepEqual(result, { acknowledged: true, insertedIds: { 0: "test2" }, insertedCount: 1 });
       assert.strictEqual(afterInsertMock.mock.callCount(), 1, "Should have only called after.insert for one doc");
     });
+
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection();
+      const mockInsertMany = mock.method(fakeCollection, "insertMany");
+
+      hookedCollection.on("before.insertMany", ({ args }) => {
+        const [docs, options] = args;
+        return [docs, { ...options, comment: "modified options" }];
+      });
+
+      const docs = [{ _id: "test1" }, { _id: "test2" }];
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.insertMany(docs, originalOptions);
+
+      assert.strictEqual(mockInsertMany.mock.calls.length, 1);
+      const passedOptions = mockInsertMany.mock.calls[0].arguments[1];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
   });
 }

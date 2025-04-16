@@ -48,6 +48,25 @@ export function defineFindOneAndReplace() {
 
       assert.ok(result.value instanceof Test, "transform worked");
     });
+    
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
+      const mockFindOneAndReplace = mock.method(fakeCollection, "findOneAndReplace");
+      
+      hookedCollection.on("before.findOneAndReplace", ({ args }) => {
+        const [filter, replacement, options] = args;
+        return [filter, replacement, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: "test" };
+      const replacement = { _id: "test", field: "value" };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.findOneAndReplace(filter, replacement, originalOptions);
+      
+      assert.strictEqual(mockFindOneAndReplace.mock.calls.length, 1);
+      const passedOptions = mockFindOneAndReplace.mock.calls[0].arguments[2];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
 
     updateTests("findOneAndReplace");
   });

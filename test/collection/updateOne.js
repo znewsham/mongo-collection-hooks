@@ -142,6 +142,25 @@ export function defineUpdateOne() {
       );
     });
 
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
+      const mockUpdateOne = mock.method(fakeCollection, "updateOne");
+      
+      hookedCollection.on("before.updateOne", ({ args }) => {
+        const [filter, update, options] = args;
+        return [filter, update, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: "test" };
+      const update = { $set: { field: "value" } };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.updateOne(filter, update, originalOptions);
+      
+      assert.strictEqual(mockUpdateOne.mock.calls.length, 1);
+      const passedOptions = mockUpdateOne.mock.calls[0].arguments[2];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
+
     updateTests("updateOne");
   });
 }

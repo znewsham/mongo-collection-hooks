@@ -91,6 +91,24 @@ export function defineDeleteOne() {
       );
     });
 
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
+      const mockDeleteOne = mock.method(fakeCollection, "deleteOne");
+      
+      hookedCollection.on("before.deleteOne", ({ args }) => {
+        const [filter, options] = args;
+        return [filter, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: "test" };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.deleteOne(filter, originalOptions);
+      
+      assert.strictEqual(mockDeleteOne.mock.calls.length, 1);
+      const passedOptions = mockDeleteOne.mock.calls[0].arguments[1];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
+
     deleteTests("deleteOne");
   });
 }

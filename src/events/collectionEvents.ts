@@ -29,8 +29,8 @@ import type {
 
 import { ProjectionOfTSchema, FilterOfTSchema } from "mongo-collection-helpers";
 
-import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, BeforeInternalEmitArgsNoArgsOrig, CommonDefinition, ExtractEventDefinitions, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
-import { ChainedCallbackEventMap, StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
+import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, CommonDefinition, ExtractEventDefinitions, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
+import { StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
 import { Abortable, Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "./commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
@@ -39,7 +39,6 @@ import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMa
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js";
 import { BeforeAfterErrorSharedEventDefinitions, SharedCallbackArgsAndReturn } from "./sharedEvents.js";
-import { HookedCollection } from "../hookedCollection.js";
 import { BeforeAfterEventNamesOfName } from "./index.js";
 
 type WithDocumentDefineHookOptions<TSchema extends Document, ARGS> = {
@@ -371,29 +370,29 @@ export type FindOneAndReplaceCallArgs<TSchema extends Document> = readonly [Mayb
 
 export type UpsertCallArgs<
   TSchema extends Document,
-  Caller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"
-> = Caller extends "updateOne" | "updateMany"
+  ActualCaller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"
+> = ActualCaller extends "updateOne" | "updateMany"
   ? UpdateCallArgs<TSchema>
-  : Caller extends "replaceOne"
+  : ActualCaller extends "replaceOne"
     ? ReplaceCallArgs<TSchema>
-    : Caller extends "findOneAndUpdate"
+    : ActualCaller extends "findOneAndUpdate"
       ? FindOneAndUpdateCallArgs<TSchema>
-      : Caller extends "findOneAndReplace"
+      : ActualCaller extends "findOneAndReplace"
         ? FindOneAndReplaceCallArgs<TSchema>
         : never
 ;
 
 export type UpsertAndCallerCallArgs<
   TSchema extends Document,
-  Caller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"
-> = Caller extends "updateOne" | "updateMany"
-  ? { caller: Caller, args: UpdateCallArgs<TSchema> }
-  : Caller extends "replaceOne"
-    ? { caller: Caller, args: ReplaceCallArgs<TSchema> }
-    : Caller extends "findOneAndUpdate"
-      ? { caller: Caller, args: FindOneAndUpdateCallArgs<TSchema> }
-      : Caller extends "findOneAndReplace"
-        ? { caller: Caller, args: FindOneAndReplaceCallArgs<TSchema> }
+  ActualCaller extends "updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace"
+> = ActualCaller extends "updateOne" | "updateMany"
+  ? { caller: ActualCaller, args: UpdateCallArgs<TSchema> }
+  : ActualCaller extends "replaceOne"
+    ? { caller: ActualCaller, args: ReplaceCallArgs<TSchema> }
+    : ActualCaller extends "findOneAndUpdate"
+      ? { caller: ActualCaller, args: FindOneAndUpdateCallArgs<TSchema> }
+      : ActualCaller extends "findOneAndReplace"
+        ? { caller: ActualCaller, args: FindOneAndReplaceCallArgs<TSchema> }
         : never
 ;
 type TopLevelCall<O extends CommonDefinition & { result: any }> = {

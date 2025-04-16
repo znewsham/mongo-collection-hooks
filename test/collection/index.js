@@ -19,7 +19,7 @@ import { defineFindOneAndDelete } from "./findOneAndDelete.js";
 import { defineChangeArgs } from "./changeArgs.js";
 import { defineInstrument } from "./instrument.js";
 
-describe("collection", () => {
+describe.only("collection", () => {
   defineInsertOne();
   defineInsertMany();
   defineDeleteOne();

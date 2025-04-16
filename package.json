@@ -1,6 +1,6 @@
 {
   "name": "mongo-collection-hooks",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "",
   "main": "lib/index.js",
   "type": "module",
@@ -15,7 +15,8 @@
     "test:watch-inspect": "node --enable-source-maps --inspect-brk --watch --test test/index.js",
     "test:watch-only": "node --enable-source-maps --watch --test-only test/index.js",
     "test:coverage": "NODE_V8_COVERAGE=.coverage npm test && npx c8 report --clean --temp-directory \"./.coverage/\" --report-dir \"./.coverage-report/\" --src \"./lib/*\" --reporter lcov --exclude=\"lib/abstract*\" --include=\"lib/*\" --reporter json-summary",
-    "prepublishOnly": "npm run build && npm run build-es2020 && npm run build-es2015 && npm test"
+    "prepublishOnly": "npm run build && npm run build-es2020 && npm run build-es2015 && npm test && npm run lint",
+    "lint": "npx eslint src"
   },
   "types": "./lib/index.d.ts",
   "author": "",
@@ -42,9 +43,12 @@
   "devDependencies": {
     "@blastjs/minimongo": "^0.1.0",
     "c8": "^9.1.0",
+    "eslint": "^9.24.0",
+    "eslint-config-prettier": "^10.1.2",
     "mongo-query-compiler": "^1.0.7",
     "mongodb": "^5.9.2",
     "typedoc": "^0.25.13",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "typescript-eslint": "^8.30.1"
   }
 }

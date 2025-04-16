@@ -1,4 +1,4 @@
-import { CursorParams, CursorParamsWithArgs, CursorParamsWithArgsAndResult, CursorParamsWithCaller, CursorParamsWithResult } from "./cursorHelperTypes.js"
+import { CursorParams, CursorParamsWithArgs, CursorParamsWithCaller, CursorParamsWithResult } from "./cursorHelperTypes.js"
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js"
 import { BeforeAfterCallbackArgsAndReturn, ExtractEventDefinitions } from "./helpersTypes.js"
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js"

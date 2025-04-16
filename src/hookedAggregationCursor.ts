@@ -16,7 +16,7 @@ interface HookedAggregateCursorOptions<TSchema> {
   interceptExecute: boolean
 }
 
-export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHookedAggregationCursor<TSchema> implements HookedAggregationCursorInterface<TSchema> {
+export class HookedAggregationCursor<TSchema> extends AbstractHookedAggregationCursor<TSchema> implements HookedAggregationCursorInterface<TSchema> {
   #ee = new HookedEventEmitter<AggregationCursorHookedEventMap<TSchema>>();
   #aggregateInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
@@ -135,14 +135,13 @@ export class HookedAggregationCursor<TSchema extends unknown> extends AbstractHo
       this.#ee,
       async () => {
         assertCaller(this.#caller, "aggregation.cursor.next");
-        const invocationSymbol = Symbol("aggregation.next");
         return this.#tryCatchEmit(
           this.#ee,
           async ({ invocationSymbol }) => this.#wrapCaller("aggregation.cursor.next", async () => {
             if (this.#cursor.id === undefined) {
               await this.#triggerInit();
             }
-            let next: TSchema | null = await this.#cursor.next();
+            const next: TSchema | null = await this.#cursor.next();
 
             return next;
           }, invocationSymbol),

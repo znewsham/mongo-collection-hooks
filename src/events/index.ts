@@ -99,10 +99,10 @@ const cursorEvents = [
 
 type SpecificCursorEvents<T, CE extends string> = T extends string ? `${T}cursor.${CE}` : `cursor.${CE}`;
 function specificCursorEvents<T extends string, E extends string>(
-  cursorEvents: readonly E[],
+  actualCursorEvents: readonly E[],
   cursorType: T
 ): SpecificCursorEvents<T, E>[] {
-  return cursorEvents.map(event => `${cursorType}cursor.${event}` as SpecificCursorEvents<T, E>);
+  return actualCursorEvents.map(event => `${cursorType}cursor.${event}` as SpecificCursorEvents<T, E>);
 }
 
 const findCursorEvents = [
@@ -184,7 +184,7 @@ export function assertCaller<
 export function getAssertCaller<
   BEAD extends MapWithCaller
 >() {
-  return function assertCaller<IE extends keyof BEAD>(
+  return function innerAssertCaller<IE extends keyof BEAD>(
     caller: GenericCallerType<BEAD>,
     internalEvent: IE
   ): asserts caller is GenericCallerType<BEAD, typeof internalEvent> {
