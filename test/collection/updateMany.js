@@ -369,6 +369,26 @@ export function defineUpdateMany() {
       assert.ok(beforeHookTimes[2] - beforeHookTimes[1] > 50, "Should have a substantial difference in hook time");
       assert.ok(beforeHookTimes[3] - beforeHookTimes[2] < 50, "Should NOT have a substantial difference in hook time");
     });
+    
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const mockUpdateMany = mock.method(fakeCollection, "updateMany");
+      
+      hookedCollection.on("before.updateMany", ({ args }) => {
+        const [filter, update, options] = args;
+        return [filter, update, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: { $in: ["test", "test2"] } };
+      const update = { $set: { field: "value" } };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.updateMany(filter, update, originalOptions);
+      
+      assert.strictEqual(mockUpdateMany.mock.calls.length, 1);
+      const passedOptions = mockUpdateMany.mock.calls[0].arguments[2];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
+    
     updateTests("updateMany");
   });
 }

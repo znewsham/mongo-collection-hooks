@@ -48,6 +48,25 @@ export function defineFindOneAndDelete() {
 
       assert.ok(result.value instanceof Test, "transform worked");
     });
+    
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
+      const mockFindOneAndDelete = mock.method(fakeCollection, "findOneAndDelete");
+      
+      hookedCollection.on("before.findOneAndDelete", ({ args }) => {
+        const [filter, options] = args;
+        return [filter, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: "test" };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.findOneAndDelete(filter, originalOptions);
+      
+      assert.strictEqual(mockFindOneAndDelete.mock.calls.length, 1);
+      const passedOptions = mockFindOneAndDelete.mock.calls[0].arguments[1];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
+    
     deleteTests("findOneAndDelete");
   });
 }

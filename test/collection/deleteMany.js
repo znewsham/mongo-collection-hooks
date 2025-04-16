@@ -93,6 +93,24 @@ export function defineDeleteMany() {
       );
     });
 
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const mockDeleteMany = mock.method(fakeCollection, "deleteMany");
+      
+      hookedCollection.on("before.deleteMany", ({ args }) => {
+        const [filter, options] = args;
+        return [filter, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: { $in: ["test", "test2"] } };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.deleteMany(filter, originalOptions);
+      
+      assert.strictEqual(mockDeleteMany.mock.calls.length, 1);
+      const passedOptions = mockDeleteMany.mock.calls[0].arguments[1];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
+    });
+
     it("if one delete hook throws an error, we should throw a MongoBulkWriteError", async () => {
       const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
       let first = true;

@@ -7,7 +7,7 @@ import { updateTests } from "./update.js";
 import { Test } from "../testClass.js";
 
 export function defineFindOneAndUpdate() {
-  describe("findOneAndUpdate", () => {
+  describe.only("findOneAndUpdate", () => {
     it("should pass the options between before hooks correctly", async () => {
       const result = await hooksChain("before.findOneAndUpdate", "args", ({ hookedCollection }) => hookedCollection.findOneAndUpdate({ _id: "test" }, { $set: { value: "test" } }), [[{ _id: "test" }, { $set: { value: "test" } }], [{ _id: "test" }, { $set: { value: "test" } }]]);
       // TODO: test only problem - does it return the updated value or the old one?
@@ -47,6 +47,26 @@ export function defineFindOneAndUpdate() {
       const result = await hookedCollection.findOneAndUpdate({}, { $set: { a: 1 } });
 
       assert.ok(result.value instanceof Test, "transform worked");
+    });
+
+    it.only("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
+      const mockFindOneAndUpdate = mock.method(fakeCollection, "findOneAndUpdate");
+
+      hookedCollection.on("before.findOneAndUpdate", ({ args }) => {
+        const [filter, update, options] = args;
+        debugger;
+        return [filter, update, { ...options, comment: "modified options" }];
+      });
+
+      const filter = { _id: "test" };
+      const update = { $set: { field: "value" } };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.findOneAndUpdate(filter, update, originalOptions);
+
+      assert.strictEqual(mockFindOneAndUpdate.mock.calls.length, 1);
+      const passedOptions = mockFindOneAndUpdate.mock.calls[0].arguments[2];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
     });
 
     updateTests("findOneAndUpdate");

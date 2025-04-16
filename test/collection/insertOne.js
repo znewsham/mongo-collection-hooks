@@ -39,7 +39,6 @@ export function defineInsertOne() {
       hookedCollection.on("before.insertOne", beforeInsertOne);
       hookedCollection.on("after.insertOne.success", afterInsertOne);
       const args = [{ _id: "test2" }, undefined];
-      debugger;
       await hookedCollection.insertOne(...args);
       assertImplements(beforeInsert.mock.calls[0].arguments, [{
         args,
@@ -89,6 +88,24 @@ export function defineInsertOne() {
       const result = await hookedCollection.insertOne({ _id: "test" });
       assert.strictEqual(afterInsertMock.mock.callCount(), 0, "Should have only called after.insert for one doc");
       assert.deepEqual(result, { acknowledged: false, insertedId: null });
+    });
+
+    it("should use chained options instead of original options", async () => {
+      const { hookedCollection, fakeCollection } = getHookedCollection();
+      const mockInsertOne = mock.method(fakeCollection, "insertOne");
+
+      hookedCollection.on("before.insertOne", ({ args }) => {
+        const [doc, options] = args;
+        return [doc, { ...options, comment: "modified options" }];
+      });
+
+      const doc = { _id: "test" };
+      const originalOptions = { comment: "original options" };
+      await hookedCollection.insertOne(doc, originalOptions);
+
+      assert.strictEqual(mockInsertOne.mock.calls.length, 1);
+      const passedOptions = mockInsertOne.mock.calls[0].arguments[1];
+      assert.deepEqual(passedOptions, { comment: "modified options" });
     });
   });
 }
