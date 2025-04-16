@@ -1,6 +1,6 @@
 import type { MongoDBNamespace, ReadConcern, ReadPreference, AbstractCursor, AbstractCursorEvents, CommonEvents, CursorStreamOptions, GenericListener, Long, ReadConcernLike, ReadPreferenceLike } from "mongodb";
 
-export abstract class AbstractHookedCursor<TSchema extends any> implements AbstractCursor<TSchema> {
+export abstract class AbstractHookedCursor<TSchema> implements AbstractCursor<TSchema> {
   #cursor: AbstractCursor<TSchema>
 
   constructor(cursor: AbstractCursor<TSchema>) {
@@ -84,37 +84,37 @@ export abstract class AbstractHookedCursor<TSchema extends any> implements Abstr
     return this.#cursor.listeners(event);
   }
   addListener<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  addListener(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  addListener(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   addListener(event: string | symbol, listener: GenericListener): this {
     this.#cursor.addListener(event, listener);
     return this;
   }
   off<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  off(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  off(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   off(event: string | symbol, listener: GenericListener): this {
     this.#cursor.off(event, listener);
     return this;
   }
   on<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  on(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  on(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   on(event: string | symbol, listener: GenericListener): this {
     this.#cursor.on(event, listener);
     return this;
   }
   once<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  once(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  once(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   once(event: string | symbol, listener: GenericListener): this {
     this.#cursor.once(event, listener);
     return this;
   }
   prependListener<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  prependListener(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  prependListener(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   prependListener(event: string | symbol, listener: GenericListener): this {
     this.#cursor.prependListener(event, listener);
     return this;
   }
   prependOnceListener<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  prependOnceListener(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  prependOnceListener(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   prependOnceListener(event: string | symbol, listener: GenericListener): this {
     this.#cursor.prependOnceListener(event, listener);
     return this;
@@ -128,7 +128,7 @@ export abstract class AbstractHookedCursor<TSchema extends any> implements Abstr
     return this;
   }
   removeListener<EventKey extends "close">(event: EventKey, listener: AbstractCursorEvents[EventKey]): this;
-  removeListener(event: CommonEvents, listener: (eventName: string | symbol, listener: GenericListener) => void): this;
+  removeListener(event: CommonEvents, listenerName: (eventName: string | symbol, listener: GenericListener) => void): this;
   removeListener(event: string | symbol, listener: GenericListener): this{
     this.#cursor.removeListener(event, listener);
     return this;

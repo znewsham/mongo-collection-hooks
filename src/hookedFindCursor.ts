@@ -5,18 +5,6 @@ import { getTryCatch } from "./tryCatchEmit.js";
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { BeforeAfterErrorFindCursorEventDefinitions } from "./events/findCursorEvents.js";
 
-const t: PartialCallbackMap<
-keyof FindCursorHookedEventMap<Document>,
-FindCursorHookedEventMap<Document>
-> = {
-  "after.cursor.asyncIterator.error": [{
-    listener: (() => void 0),
-    options: {
-      tags: ["test"]
-    }
-  }]
-}
-
 export interface HookedFindCursorOptions<TSchema> {
   transform?: (doc: TSchema) => any,
   events: PartialCallbackMap<
@@ -27,7 +15,7 @@ export interface HookedFindCursorOptions<TSchema> {
   interceptExecute: boolean,
   invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>
 }
-export class HookedFindCursor<TSchema extends any = any> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
+export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
   #transform?:(doc: TSchema) => any;
   #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
   #findInvocationSymbol: symbol;

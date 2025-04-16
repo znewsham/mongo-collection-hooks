@@ -6,7 +6,7 @@ import type {
 } from "mongodb";
 import { AbstractHookedCursor } from "./abstractCursorImpl.js";
 
-export abstract class AbstractHookedAggregationCursor<TSchema extends any = any> extends AbstractHookedCursor<TSchema> implements AggregationCursor<TSchema> {
+export abstract class AbstractHookedAggregationCursor<TSchema> extends AbstractHookedCursor<TSchema> implements AggregationCursor<TSchema> {
   #cursor: AggregationCursor<TSchema>;
   constructor(cursor: AggregationCursor<TSchema>) {
     super(cursor);

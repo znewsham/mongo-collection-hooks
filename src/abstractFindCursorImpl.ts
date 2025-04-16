@@ -10,7 +10,7 @@ import type {
 } from "mongodb";
 import { AbstractHookedCursor } from "./abstractCursorImpl.js";
 
-export abstract class AbstractHookedFindCursor<TSchema extends any = any> extends AbstractHookedCursor<TSchema> implements FindCursor<TSchema> {
+export abstract class AbstractHookedFindCursor<TSchema> extends AbstractHookedCursor<TSchema> implements FindCursor<TSchema> {
   #cursor: FindCursor<TSchema>;
   constructor(cursor: FindCursor<TSchema>) {
     super(cursor);

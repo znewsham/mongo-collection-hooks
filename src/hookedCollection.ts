@@ -50,8 +50,8 @@ import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from 'mongo-collection-helpers';
-import { CallbackAndOptionsOfEm, ChainedCallbackEventMap, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
-import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, AmendedFindOneOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, MaybeStrictFilter, FindOneAndUpdateCallArgs, UpsertCallArgs } from './events/collectionEvents.js';
+import { CallbackAndOptionsOfEm, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
+import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, AmendedFindOneOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, MaybeStrictFilter, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 import { BulkWriteError, BulkWriteResult } from './bulkError.js';
 import { maybeParallel } from './maybeParallel.js';
@@ -89,10 +89,8 @@ type TypedDeleteResult<TSchema extends Document> = {
   result: WithId<TSchema> | null
 }
 
-type T = { a: { b: number, c: string } };
-
 interface HookedFindCursorConstructor<TSchema extends Document> {
-  new (filter: MaybeStrictFilter<TSchema> | undefined, cursor: FindCursor, chainedOptions: HookedFindCursorOptions<TSchema>): HookedFindCursor
+  new (filter: MaybeStrictFilter<TSchema> | undefined, cursor: FindCursor, options: HookedFindCursorOptions<TSchema>): HookedFindCursor
 }
 
 type HookedCollectionOptions<TSchema extends Document> = {
@@ -114,34 +112,34 @@ export class HookedCollection<
 
   constructor(
     collection: Collection<TSchema>,
-    chainedOptions?: HookedCollectionOptions<TSchema>
+    options?: HookedCollectionOptions<TSchema>
   ) {
     super(collection);
     this.#collection = collection;
-    if (chainedOptions?.findCursorImpl) {
-      this.#findCursorImpl = chainedOptions.findCursorImpl;
+    if (options?.findCursorImpl) {
+      this.#findCursorImpl = options.findCursorImpl;
     }
-    if (chainedOptions?.interceptExecute) {
-      this.#interceptExecute = chainedOptions.interceptExecute;
+    if (options?.interceptExecute) {
+      this.#interceptExecute = options.interceptExecute;
     }
-    if (chainedOptions?.transform) {
-      this.#transform = chainedOptions.transform;
+    if (options?.transform) {
+      this.#transform = options.transform;
     }
     this.init();
   }
 
-  aggregate<T extends Document>(pipeline: Document[], chainedOptions?: AmendedAggregateOptions): AggregationCursor<T> {
+  aggregate<T extends Document>(pipeline: Document[], options?: AmendedAggregateOptions): AggregationCursor<T> {
     const invocationSymbol = Symbol("aggregate");
     const [chainedPipeline, chainedOptions] = this.#ee.callSyncChainWithKey(
       "before.aggregate",
       {
-        args: [pipeline, chainedOptions],
+        args: [pipeline, options],
         invocationSymbol,
-        signal: chainedOptions?.signal,
+        signal: options?.signal,
         thisArg: this
       },
       "args",
-      chainedOptions
+      options
     );
 
     try {
@@ -163,13 +161,13 @@ export class HookedCollection<
         {
           args: [chainedPipeline, chainedOptions],
           result: cursor,
-          signal: chainedOptions?.signal,
-          argsOrig: [pipeline, chainedOptions],
+          signal: options?.signal,
+          argsOrig: [pipeline, options],
           thisArg: this,
           invocationSymbol
         },
         "result",
-        chainedOptions,
+        options,
         Events.afterSuccess.aggregate,
         Events.after.aggregate
       );
@@ -184,12 +182,12 @@ export class HookedCollection<
         {
           args: [chainedPipeline, chainedOptions],
           error: e,
-          signal: chainedOptions?.signal,
-          argsOrig: [pipeline, chainedOptions],
+          signal: options?.signal,
+          argsOrig: [pipeline, options],
           thisArg: this,
           invocationSymbol
         },
-        chainedOptions,
+        options,
         Events.afterError.aggregate,
         Events.after.aggregate,
       );
@@ -216,42 +214,42 @@ export class HookedCollection<
   distinct<Key extends keyof WithId<TSchema>>(
     key: Key,
     filter: MaybeStrictFilter<TSchema> = {},
-    chainedOptions: AmendedDistinctOptions = {}
+    options: AmendedDistinctOptions = {}
   ) {
     return this.#tryCatchEmit(
       InternalEvents.distinct,
-      { args: [key, filter, chainedOptions] },
+      { args: [key, filter, options] },
       "args",
-      ({ beforeHooksResult: [key, filter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.distinct(key, filter as Filter<TSchema>, chainedOptions)),
-      chainedOptions
+      ({ beforeHooksResult: [chainedKey, chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.distinct(chainedKey, chainedFilter as Filter<TSchema>, chainedOptions)),
+      options
     );
   }
 
-  findOne<T extends Document = TSchema>(filter?: MaybeStrictFilter<TSchema>, chainedOptions?: AmendedFindOneOptions<TSchema> | undefined): Promise<T | null> {
+  findOne<T extends Document = TSchema>(filter?: MaybeStrictFilter<TSchema>, options?: AmendedFindOneOptions<TSchema> | undefined): Promise<T | null> {
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
-        args: [filter, chainedOptions],
+        args: [filter, options],
         operation: "findOne"
       },
       undefined,
       () => this.#tryCatchEmit(
         InternalEvents.findOne,
-        { args: [filter, chainedOptions] },
+        { args: [filter, options] },
         "args",
         async ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
-          if (chainedFilter && chainedOptions) {
-            const ret = await raceSignal(chainedOptions?.signal, this.#collection.findOne<T>(chainedFilter as Filter<TSchema>, chainedOptions));
+          if (chainedFilter && options) {
+            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter as Filter<TSchema>, chainedOptions));
             return ret && this.#transform(ret);
           }
           if (chainedFilter) {
-            const ret = await raceSignal(chainedOptions?.signal, this.#collection.findOne<T>(chainedFilter as Filter<TSchema>));
+            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter as Filter<TSchema>));
             return ret && this.#transform(ret);
           }
-          const ret = await raceSignal(chainedOptions?.signal, this.#collection.findOne<T>());
+          const ret = await raceSignal(options?.signal, this.#collection.findOne<T>());
           return ret && this.#transform(ret);
         },
-        chainedOptions,
+        options,
         {
           event: "findOne*",
           emitArgs: {
@@ -259,13 +257,13 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
 
-  #find<T extends Document = TSchema>(filter?: MaybeStrictFilter<TSchema>, chainedOptions?: AmendedFindOptions<TSchema>): FindCursor<T> {
-    if (filter && chainedOptions) {
-      return this.#collection.find<T>(filter as Filter<TSchema>, chainedOptions);
+  #find<T extends Document = TSchema>(filter?: MaybeStrictFilter<TSchema>, options?: AmendedFindOptions<TSchema>): FindCursor<T> {
+    if (filter && options) {
+      return this.#collection.find<T>(filter as Filter<TSchema>, options);
     }
     else if (filter) {
       return this.#collection.find<T>(filter as Filter<TSchema>);
@@ -273,18 +271,18 @@ export class HookedCollection<
     return this.#collection.find() as unknown as FindCursor<T>;
   }
 
-  find<T extends Document = TSchema>(filter: MaybeStrictFilter<TSchema> = {}, chainedOptions?: AmendedFindOptions<TSchema>): HookedFindCursor<T> {
+  find<T extends Document = TSchema>(filter: MaybeStrictFilter<TSchema> = {}, options?: AmendedFindOptions<TSchema>): HookedFindCursor<T> {
     const invocationSymbol = Symbol("find");
     const [chainedFilter, chainedOptions] = this.#ee.callSyncChainWithKey(
       Events.before.find,
       {
-        args: [filter, chainedOptions],
+        args: [filter, options],
         thisArg: this,
-        signal: chainedOptions?.signal,
+        signal: options?.signal,
         invocationSymbol
       },
       "args",
-      chainedOptions
+      options
     );
     try {
       const actualCursor = this.#find<T>(chainedFilter as Filter<TSchema>, chainedOptions);
@@ -301,7 +299,7 @@ export class HookedCollection<
             .filter(name => FindCursorEventsSet.has(name as keyof FindCursorHookedEventMap<any>))
             .map(name => [name, this.#ee.awaitableListenersWithOptions(name)])
           ),
-          invocationOptions: chainedOptions,
+          invocationOptions: options,
           transform: this.#transform
         }
       ) as HookedFindCursorInterface<T>;
@@ -310,13 +308,13 @@ export class HookedCollection<
         {
           args: [chainedFilter, chainedOptions],
           result: cursor,
-          signal: chainedOptions?.signal,
-          argsOrig: [filter, chainedOptions],
+          signal: options?.signal,
+          argsOrig: [filter, options],
           thisArg: this,
           invocationSymbol
         },
         "result",
-        chainedOptions,
+        options,
         Events.afterSuccess.find,
         Events.after.find
       );
@@ -330,13 +328,13 @@ export class HookedCollection<
         {
           args: [chainedFilter, chainedOptions],
           error: e,
-          signal: chainedOptions?.signal,
-          argsOrig: [filter, chainedOptions],
+          signal: options?.signal,
+          argsOrig: [filter, options],
           thisArg: this,
           invocationSymbol
         },
         undefined,
-        chainedOptions,
+        options,
         Events.afterError.find,
         Events.after.find,
       );
@@ -368,7 +366,7 @@ export class HookedCollection<
     invocationOptions: StandardInvokeHookOptions<CollectionHookedEventMap<TSchema>, `before.${IE}` | `after.${IE}.success`> | undefined,
     ...additionalInternalEvents: OIE[] | { event: OIE, emitArgs: Partial<HEM[`before.${OIE}`]["emitArgs"]> }[]
   ): Promise<Awaited<ReturnType<T>>> {
-    let {
+    const {
       args,
       caller,
       ...remainingEmitArgs
@@ -396,8 +394,8 @@ export class HookedCollection<
     )
   }
 
-  insertOne(doc: OptionalUnlessRequiredId<TSchema>, chainedOptions?: AmendedInsertOneOptions): Promise<InsertOneResult<TSchema>> {
-    const argsOrig = [doc, chainedOptions] as const;
+  insertOne(doc: OptionalUnlessRequiredId<TSchema>, options?: AmendedInsertOneOptions): Promise<InsertOneResult<TSchema>> {
+    const argsOrig = [doc, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -407,7 +405,7 @@ export class HookedCollection<
       undefined,
       () => this.#tryCatchEmit(
         InternalEvents.insertOne,
-        { args: [doc, chainedOptions] },
+        { args: [doc, options] },
         "args",
         ({
           invocationSymbol,
@@ -433,16 +431,16 @@ export class HookedCollection<
             }
             return raceSignal(chainedOptions?.signal, this.#collection.insertOne(beforeHooksResult, chainedOptions))
           },
-          chainedOptions
+          options
         ),
-        chainedOptions
+        options
       ),
-      chainedOptions
+      options
     );
   }
 
-  insertMany(docs: OptionalUnlessRequiredId<TSchema>[], chainedOptions?: AmendedBulkWriteOptions) {
-    const argsOrig = [docs, chainedOptions] as const;
+  insertMany(docs: OptionalUnlessRequiredId<TSchema>[], options?: AmendedBulkWriteOptions) {
+    const argsOrig = [docs, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -578,9 +576,9 @@ export class HookedCollection<
             return ret;
           }
         },
-        chainedOptions
+        options
       ),
-      chainedOptions
+      options
     );
   }
 
@@ -596,8 +594,9 @@ export class HookedCollection<
     parentInvocationSymbol: symbol,
     argsOrig: UpsertCallArgs<TSchema, typeof caller>,
     args: UpsertCallArgs<TSchema, typeof caller>,
+    // eslint-disable-next-line
     fn: ({ caller, args }: CA[("updateOne" | "updateMany" | "replaceOne" | "findOneAndUpdate" | "findOneAndReplace")]) => Promise<TypedUpdateResult<TSchema>>,
-    chainedOptions: StandardInvokeHookOptions<any, any> | undefined,// QUESTIONable
+    options: StandardInvokeHookOptions<any, any> | undefined,// QUESTIONable
     doc: OptionalUnlessRequiredId<TSchema> = {} as OptionalUnlessRequiredId<TSchema>,
   ): Promise<TypedUpdateResult<TSchema>> {
     let inner: TypedUpdateResult<TSchema>;
@@ -612,7 +611,7 @@ export class HookedCollection<
       },
       "doc",
       async ({
-        beforeHooksResult: doc // QUESTION - can we apply the doc? It might be a modifier
+        beforeHooksResult: chainedDoc // QUESTION - can we apply the doc? It might be a modifier
       }) => {
         inner = await fn({
           caller,
@@ -632,7 +631,7 @@ export class HookedCollection<
         }
         return inner.result;
       },
-      chainedOptions,
+      options,
     );
     // @ts-expect-error it *HAS* been assigned
     return inner;
@@ -654,34 +653,34 @@ export class HookedCollection<
     ids?: InferIdType<TSchema>[]
   ): Promise<Awaited<ReturnType<T1>>["result"]> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.delete, invocationOptions)
-    .filter(({ chainedOptions: hookOptions }) => {
+    .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun({
         argsOrig: beforeEmitArgs.argsOrig,
         thisArg: this
       });
     });
     const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.delete, invocationOptions)
-    .filter(({ chainedOptions: hookOptions }) => {
+    .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun({
         argsOrig: beforeEmitArgs.argsOrig,
         thisArg: this
       });
     });
     const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after.delete, invocationOptions)
-    .filter(({ chainedOptions: hookOptions }) => {
+    .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun({
         argsOrig: beforeEmitArgs.argsOrig,
         thisArg: this
       });
     });
-    const isBeforeGreedy = beforeListenersWithOptions.map(({ chainedOptions }) => chainedOptions?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
-    const beforeProjections = beforeListenersWithOptions.map(({ chainedOptions }) => chainedOptions?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
+    const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
+    const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
       argsOrig: beforeEmitArgs.argsOrig,
       thisArg: this
     }) : a);
     const allAfterListenersWithOptions = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions];
-    const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ chainedOptions }) => chainedOptions?.fetchPrevious);
-    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ chainedOptions }) => chainedOptions?.fetchPreviousProjection).filter(notUndefined).map(a => typeof a === "function" ? a({
+    const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ options }) => options?.fetchPrevious);
+    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(notUndefined).map(a => typeof a === "function" ? a({
       argsOrig: beforeEmitArgs.argsOrig,
       thisArg: this
     }) : a);
@@ -761,7 +760,7 @@ export class HookedCollection<
         let gotResult = false;
         try {
           invocationOptions?.signal?.throwIfAborted();
-          let partialResult = await perDocFn({
+          const partialResult = await perDocFn({
             _id,
             beforeHooksResult: chainedFilter,
             invocationSymbol
@@ -903,40 +902,40 @@ export class HookedCollection<
     ids?: InferIdType<TSchema>[]
   ): Promise<Awaited<ReturnType<T1>>["result"]> {
     const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before.update, invocationOptions)
-    .filter(({ chainedOptions: hookOptions }) => {
+    .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun({
         argsOrig: beforeEmitArgs.argsOrig,
         thisArg: this
       });
     });
     const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess.update, invocationOptions)
-    .filter(({ chainedOptions: hookOptions }) => {
+    .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun({
         argsOrig: beforeEmitArgs.argsOrig,
         thisArg: this
       });
     });
     const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after.update, invocationOptions)
-    .filter(({ chainedOptions: hookOptions }) => {
+    .filter(({ options: hookOptions }) => {
       return !hookOptions?.shouldRun || hookOptions.shouldRun({
         argsOrig: beforeEmitArgs.argsOrig,
         thisArg: this
       });
     });
 
-    const isBeforeGreedy = beforeListenersWithOptions.map(({ chainedOptions }) => chainedOptions?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
-    const beforeProjections = beforeListenersWithOptions.map(({ chainedOptions }) => chainedOptions?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
+    const isBeforeGreedy = beforeListenersWithOptions.map(({ options }) => options?.greedyFetch).reduce((a, b) => a || b, false) as boolean;
+    const beforeProjections = beforeListenersWithOptions.map(({ options }) => options?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
       argsOrig: beforeEmitArgs.argsOrig,
       thisArg: this
     }) : a);
 
-    const afterProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ chainedOptions }) => chainedOptions?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
+    const afterProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.projection).filter(notUndefined).map(a => typeof a === "function" ? a({
       argsOrig: beforeEmitArgs.argsOrig,
       thisArg: this
     }) : a);
     const allAfterListenersWithOptions = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions];
-    const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ chainedOptions }) => chainedOptions?.fetchPrevious);
-    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ chainedOptions }) => chainedOptions?.fetchPreviousProjection).filter(notUndefined).map(a => typeof a === "function" ? a({
+    const fetchPrevious = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].some(({ options }) => options?.fetchPrevious);
+    const fetchPreviousProjections = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions].map(({ options }) => options?.fetchPreviousProjection).filter(notUndefined).map(a => typeof a === "function" ? a({
       argsOrig: beforeEmitArgs.argsOrig,
       thisArg: this
     }) : a);
@@ -968,7 +967,7 @@ export class HookedCollection<
         limit
       }
     );
-    let nextItem = await cursor.next();
+    const firstItem = await cursor.next();
     const alwaysAttemptOperation = !!beforeEmitArgs.args[2]?.alwaysAttemptOperation;
     let result: UpdateResult<TSchema> | Document | ModifyResult<TSchema> | WithId<TSchema> | null = {
       acknowledged: false,
@@ -977,7 +976,7 @@ export class HookedCollection<
       upsertedCount: 0,
       upsertedId: null
     };
-    if (!nextItem) {
+    if (!firstItem) {
       if (beforeEmitArgs.args[2]?.upsert) {
         const upsertResult = await this.#upsert(
           beforeEmitArgs.caller,
@@ -1114,7 +1113,7 @@ export class HookedCollection<
         try {
           invocationOptions?.signal?.throwIfAborted();
           // perDocFn decides what to do with SkipDocument since it's shape dependent.
-          let partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
+          const partialResult = await perDocFn({ _id, beforeHooksResult: chainedArgs, invocationSymbol });
           gotResult = true;
           if (chainedArgs !== SkipDocument) {
             const chainedResult = await this.#ee.callExplicitAwaitableListenersChainWithKey(
@@ -1195,7 +1194,7 @@ export class HookedCollection<
       ordered,
       (beforeEmitArgs.args?.slice(-1)[0] as AmendedUpdateOptions | undefined)?.hookBatchSize,
       invocationOptions?.signal,
-      nextItem
+      firstItem
     );
     if (errors.length && limit === 1) {
       throw errors[0];
@@ -1248,9 +1247,9 @@ export class HookedCollection<
   replaceOne(
     filter: MaybeStrictFilter<TSchema>,
     replacement: WithoutId<TSchema>,
-    chainedOptions?: AmendedReplaceOptions | undefined
+    options?: AmendedReplaceOptions | undefined
   ): Promise<Document | UpdateResult<TSchema>> {
-    const argsOrig = [filter, replacement, chainedOptions] as const;
+    const argsOrig = [filter, replacement, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -1271,7 +1270,7 @@ export class HookedCollection<
               caller: "replaceOne",
               argsOrig,
               args,
-              signal: chainedOptions?.signal,
+              signal: options?.signal,
               filterMutator: {
                 filter: args[0],
                 replacement: args[1]
@@ -1294,7 +1293,7 @@ export class HookedCollection<
               const { filter: chainedFilter, replacement: chainedReplacement } = chainedFilterMutator;
               return {
                 type: "UpdateResult",
-                result: await raceSignal(chainedOptions?.signal, this.#collection.replaceOne(
+                result: await raceSignal(options?.signal, this.#collection.replaceOne(
                   // @ts-expect-error
                   chainedFilter?._id === _id ? chainedFilter as Filter<TSchema> : { $and: [chainedFilter as Filter<TSchema>, { _id }] },
                   chainedReplacement as WithoutId<TSchema>,
@@ -1312,16 +1311,16 @@ export class HookedCollection<
               }
               return {
                 type: "UpdateResult",
-                result: await raceSignal(chainedOptions?.signal, this.#collection.replaceOne(selector, args[1], args[2])) as UpdateResult
+                result: await raceSignal(options?.signal, this.#collection.replaceOne(selector, args[1], args[2])) as UpdateResult
               }
             },
             1,
-            chainedOptions
+            options
           );
         },
-        chainedOptions
+        options
       ),
-      chainedOptions
+      options
     );
   }
 
@@ -1329,43 +1328,43 @@ export class HookedCollection<
     operation: "updateOne" | "updateMany",
     filter: MaybeStrictFilter<TSchema>,
     mutator: UpdateFilter<TSchema> | Partial<TSchema>,
-    chainedOptions?: AmendedUpdateOptions
+    options?: AmendedUpdateOptions
   ): Promise<UpdateResult<TSchema>>{
-    const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before[operation], chainedOptions)
-      .filter(({ chainedOptions: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, mutator, chainedOptions], thisArg: this }) : true);
-    const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess[operation], chainedOptions)
-      .filter(({ chainedOptions: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, mutator, chainedOptions], thisArg: this }) : true);
-    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after[operation], chainedOptions)
-      .filter(({ chainedOptions: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, mutator, chainedOptions], thisArg: this }) : true);
+    const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before[operation], options)
+      .filter(({ options: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, mutator, options], thisArg: this }) : true);
+    const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess[operation], options)
+      .filter(({ options: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, mutator, options], thisArg: this }) : true);
+    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after[operation], options)
+      .filter(({ options: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, mutator, options], thisArg: this }) : true);
 
     const allAfterListenersWithOptions = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions];
-    const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ chainedOptions: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
+    const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ options: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
     let ids: InferIdType<TSchema>[] | undefined;
     if (wantsIds) {
-      ids = (await raceSignal(chainedOptions?.signal, this.#collection.find(filter as Filter<TSchema>, { projection: { _id: 1 }, ...(operation === "updateOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
+      ids = (await raceSignal(options?.signal, this.#collection.find(filter as Filter<TSchema>, { projection: { _id: 1 }, ...(operation === "updateOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
     }
-    const argsOrig = [filter, mutator, chainedOptions] as const;
+    const argsOrig = [filter, mutator, options] as const;
     const invocationSymbol = Symbol(operation);
     let gotResult = false;
     const chainedArgs = await this.#ee.callExplicitAwaitableListenersChainWithKey(
       Events.before[operation],
       {
         args: argsOrig,
-        signal: chainedOptions?.signal,
+        signal: options?.signal,
         ...(operation === "updateOne" ? { _id: ids?.[0] } : { _ids: ids }),
         invocationSymbol,
         thisArg: this
       },
       "args",
       beforeListenersWithOptions,
-      chainedOptions?.signal,
+      options?.signal,
     );
     try {
       const result = await this.#tryCatchUpdate(
         {
           caller: operation,
           argsOrig,
-          signal: chainedOptions?.signal,
+          signal: options?.signal,
           args: chainedArgs,
           parentInvocationSymbol: invocationSymbol,
           filterMutator: {
@@ -1391,7 +1390,7 @@ export class HookedCollection<
           }
           return {
             type: "UpdateResult",
-            result: await raceSignal(chainedOptions?.signal, this.#collection.updateOne(
+            result: await raceSignal(options?.signal, this.#collection.updateOne(
               // @ts-expect-error
               chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter : { $and: [chainedFilterMutator.filter, { _id }] },
               chainedFilterMutator.mutator,
@@ -1450,7 +1449,7 @@ export class HookedCollection<
           };
         },
         operation === "updateOne" ? 1 : undefined,
-        chainedOptions,
+        options,
         ids
       );
       gotResult = true;
@@ -1461,14 +1460,14 @@ export class HookedCollection<
           args: chainedArgs,
           argsOrig,
           result,
-          signal: chainedOptions?.signal,
+          signal: options?.signal,
           ...(operation === "updateOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this
         },
         "result",
         allAfterListenersWithOptions,
-        chainedOptions?.signal,
+        options?.signal,
       );
       return chainedResult || result;
     }
@@ -1481,13 +1480,13 @@ export class HookedCollection<
         {
           args: chainedArgs,
           argsOrig,
-          signal: chainedOptions?.signal,
+          signal: options?.signal,
           ...(operation === "updateOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this,
           error: e,
         },
-        chainedOptions,
+        options,
         Events.afterError[operation],
         Events.after[operation]
       );
@@ -1498,45 +1497,45 @@ export class HookedCollection<
   updateOne(
     filter: MaybeStrictFilter<TSchema>,
     update: UpdateFilter<TSchema> | Partial<TSchema>,
-    chainedOptions?: AmendedUpdateOptions
+    options?: AmendedUpdateOptions
   ): Promise<UpdateResult<TSchema>> {
     return this.#tryCatchUpdateN(
       "updateOne",
       filter,
       update,
-      chainedOptions
+      options
     );
   }
 
-  updateMany(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, chainedOptions?: AmendedUpdateOptions | undefined): Promise<UpdateResult<TSchema>> {
+  updateMany(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options?: AmendedUpdateOptions | undefined): Promise<UpdateResult<TSchema>> {
     return this.#tryCatchUpdateN(
       "updateMany",
       filter,
       update,
-      chainedOptions
+      options
     );
   }
 
   async #tryCatchDeleteN(
     operation: "deleteOne" | "deleteMany",
     filter: MaybeStrictFilter<TSchema>,
-    chainedOptions?: AmendedDeleteOptions
+    options?: AmendedDeleteOptions
   ): Promise<DeleteResult>{
-    const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before[operation], chainedOptions)
-      .filter(({ chainedOptions: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, chainedOptions], thisArg: this }) : true);
-    const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess[operation], chainedOptions)
-      .filter(({ chainedOptions: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, chainedOptions], thisArg: this }) : true);
-    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after[operation], chainedOptions)
-      .filter(({ chainedOptions: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, chainedOptions], thisArg: this }) : true);
+    const beforeListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.before[operation], options)
+      .filter(({ options: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, options], thisArg: this }) : true);
+    const afterSuccessListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.afterSuccess[operation], options)
+      .filter(({ options: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, options], thisArg: this }) : true);
+    const afterListenersWithOptions = this.#ee.relevantAwaitableListenersWithOptions(Events.after[operation], options)
+      .filter(({ options: hookOptions }) => hookOptions?.shouldRun ? hookOptions.shouldRun({ argsOrig: [filter, options], thisArg: this }) : true);
 
     const allAfterListenersWithOptions = [...afterSuccessListenersWithOptions, ...afterListenersWithOptions];
-    const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ chainedOptions: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
+    const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ options: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
     let ids: InferIdType<TSchema>[] | undefined;
     if (wantsIds) {
-      chainedOptions?.signal?.throwIfAborted();
-      ids = (await raceSignal(chainedOptions?.signal, this.#collection.find(filter as Filter<TSchema>, { projection: { _id: 1 }, ...(operation === "deleteOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
+      options?.signal?.throwIfAborted();
+      ids = (await raceSignal(options?.signal, this.#collection.find(filter as Filter<TSchema>, { projection: { _id: 1 }, ...(operation === "deleteOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
     }
-    const argsOrig = [filter, chainedOptions] as const;
+    const argsOrig = [filter, options] as const;
     const invocationSymbol = Symbol(operation);
     let gotResult = false;
     const chainedArgs = await this.#ee.callExplicitAwaitableListenersChainWithKey(
@@ -1545,12 +1544,12 @@ export class HookedCollection<
         args: argsOrig,
         ...(operation === "deleteOne" ? { _id: ids?.[0] } : { _ids: ids }),
         invocationSymbol,
-        signal: chainedOptions?.signal,
+        signal: options?.signal,
         thisArg: this
       },
       "args",
       beforeListenersWithOptions,
-      chainedOptions?.signal,
+      options?.signal,
     );
     try {
       const result = await this.#tryCatchDelete(
@@ -1558,7 +1557,7 @@ export class HookedCollection<
           caller: operation,
           argsOrig,
           args: chainedArgs,
-          signal: chainedOptions?.signal,
+          signal: options?.signal,
           parentInvocationSymbol: invocationSymbol,
           filter
         },
@@ -1577,7 +1576,7 @@ export class HookedCollection<
           }
           return {
             type: "DeleteResult",
-            result: await raceSignal(chainedOptions?.signal, this.#collection.deleteOne(
+            result: await raceSignal(options?.signal, this.#collection.deleteOne(
               // @ts-expect-error
               chainedFilter?._id === _id ? chainedFilter : { $and: [chainedFilter, { _id }] },
               chainedArgs[1]
@@ -1616,7 +1615,7 @@ export class HookedCollection<
           };
         },
         operation === "deleteOne" ? 1 : undefined,
-        chainedOptions,
+        options,
         ids
       );
       gotResult = true;
@@ -1627,14 +1626,14 @@ export class HookedCollection<
           args: chainedArgs,
           argsOrig,
           result,
-          signal: chainedOptions?.signal,
+          signal: options?.signal,
           ...(operation === "deleteOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this
         },
         "result",
         allAfterListenersWithOptions,
-        chainedOptions?.signal
+        options?.signal
       );
       return chainedResult || result;
     }
@@ -1646,13 +1645,13 @@ export class HookedCollection<
         {
           args: chainedArgs,
           argsOrig,
-          signal: chainedOptions?.signal,
+          signal: options?.signal,
           ...(operation === "deleteOne" ? { _id: ids?.[0] } : { _ids: ids }),
           invocationSymbol,
           thisArg: this,
           error: e,
         },
-        chainedOptions,
+        options,
         Events.afterError[operation],
         Events.after[operation]
       );
@@ -1660,19 +1659,19 @@ export class HookedCollection<
     }
   }
 
-  deleteOne(filter?: MaybeStrictFilter<TSchema>, chainedOptions?: AmendedDeleteOptions): Promise<DeleteResult> {
+  deleteOne(filter?: MaybeStrictFilter<TSchema>, options?: AmendedDeleteOptions): Promise<DeleteResult> {
     return this.#tryCatchDeleteN(
       'deleteOne',
       filter || {},
-      chainedOptions
+      options
     );
   }
 
-  deleteMany(filter?: MaybeStrictFilter<TSchema>, chainedOptions?: AmendedDeleteOptions): Promise<DeleteResult> {
+  deleteMany(filter?: MaybeStrictFilter<TSchema>, options?: AmendedDeleteOptions): Promise<DeleteResult> {
     return this.#tryCatchDeleteN(
       'deleteMany',
       filter || {},
-      chainedOptions
+      options
     );
   }
 
@@ -1683,19 +1682,19 @@ export class HookedCollection<
   }
 
   allHooksWithOptions() {
-    return this.#ee.allListenersWithOptions().map(({ listener, eventName, chainedOptions }) => ({
+    return this.#ee.allListenersWithOptions().map(({ listener, eventName, options }) => ({
       hook: listener,
       eventName,
-      chainedOptions
+      options
     }));
   }
 
   on<K extends keyof CollectionHookedEventMap<TSchema>>(
     eventName: K,
     listener: HookedListenerCallback<K, CollectionHookedEventMap<TSchema>>,
-    chainedOptions?: CollectionHookedEventMap<TSchema>[K]["chainedOptions"]
+    options?: CollectionHookedEventMap<TSchema>[K]["options"]
   ) {
-    this.#ee.awaitableOn(eventName, listener, chainedOptions);
+    this.#ee.awaitableOn(eventName, listener, options);
     return this;
   }
 
@@ -1709,22 +1708,22 @@ export class HookedCollection<
     return this;
   }
 
-  count(filter?: MaybeStrictFilter<TSchema> | undefined, chainedOptions?: AmendedCountOptions | undefined): Promise<number> {
+  count(filter?: MaybeStrictFilter<TSchema> | undefined, options?: AmendedCountOptions | undefined): Promise<number> {
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
-        args: [filter, chainedOptions],
+        args: [filter, options],
         operation: "count"
       },
       undefined,
       () => this.#tryCatchEmit(
         InternalEvents["count"],
         {
-          args: [filter, chainedOptions]
+          args: [filter, options]
         },
         "args",
-        ({ beforeHooksResult: [filter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.count(filter as Filter<TSchema>, chainedOptions)),
-        chainedOptions,
+        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.count(chainedFilter as Filter<TSchema>, chainedOptions)),
+        options,
         {
           event: InternalEvents["count*"],
           emitArgs: {
@@ -1732,26 +1731,26 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
 
-  estimatedDocumentCount(chainedOptions?: AmendedEstimatedDocumentCountOptions | undefined): Promise<number> {
+  estimatedDocumentCount(options?: AmendedEstimatedDocumentCountOptions | undefined): Promise<number> {
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
-        args: [chainedOptions],
+        args: [options],
         operation: "estimatedDocumentCount"
       },
       undefined,
       () => this.#tryCatchEmit(
         InternalEvents["estimatedDocumentCount"],
         {
-          args: [chainedOptions]
+          args: [options]
         },
         "args",
         ({ beforeHooksResult: [chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.estimatedDocumentCount(chainedOptions as AmendedEstimatedDocumentCountOptions)),
-        chainedOptions,
+        options,
         {
           event: InternalEvents["count*"],
           emitArgs: {
@@ -1759,26 +1758,26 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
 
-  countDocuments(filter?: MaybeStrictFilter<Document> | undefined, chainedOptions?: AmendedCountDocumentsOptions | undefined): Promise<number> {
+  countDocuments(filter?: MaybeStrictFilter<Document> | undefined, options?: AmendedCountDocumentsOptions | undefined): Promise<number> {
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
-        args: [filter, chainedOptions],
+        args: [filter, options],
         operation: "countDocuments"
       },
       undefined,
       () => this.#tryCatchEmit(
         InternalEvents["countDocuments"],
         {
-          args: [filter, chainedOptions]
+          args: [filter, options]
         },
         "args",
-        ({ beforeHooksResult: [filter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.countDocuments(filter as Filter<TSchema>, chainedOptions)),
-        chainedOptions,
+        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.countDocuments(chainedFilter as Filter<TSchema>, chainedOptions)),
+        options,
         {
           event: InternalEvents["count*"],
           emitArgs: {
@@ -1786,17 +1785,17 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
 
 
-  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, chainedOptions: AmendedFindOneAndDeleteOptions<TSchema> & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
-  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, chainedOptions: AmendedFindOneAndDeleteOptions<TSchema> & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
-  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, chainedOptions: AmendedFindOneAndDeleteOptions<TSchema>): Promise<ModifyResult<TSchema>>;
+  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options: AmendedFindOneAndDeleteOptions<TSchema> & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options: AmendedFindOneAndDeleteOptions<TSchema> & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options: AmendedFindOneAndDeleteOptions<TSchema>): Promise<ModifyResult<TSchema>>;
   async findOneAndDelete(filter: MaybeStrictFilter<TSchema>): Promise<ModifyResult<TSchema>>;
-  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, chainedOptions?: AmendedFindOneAndDeleteOptions<TSchema>): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
-    const argsOrig = [filter, chainedOptions] as const;
+  async findOneAndDelete(filter: MaybeStrictFilter<TSchema>, options?: AmendedFindOneAndDeleteOptions<TSchema>): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
+    const argsOrig = [filter, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -1807,7 +1806,7 @@ export class HookedCollection<
       () => this.#tryCatchEmit(
         "findOneAndDelete",
         {
-          args: [filter, chainedOptions]
+          args: [filter, options]
         },
         "args",
         ({
@@ -1825,9 +1824,9 @@ export class HookedCollection<
             },
             async ({
               _id,
-              beforeHooksResult: filter
+              beforeHooksResult: twiceChainedFilter
             }) => {
-              if (filter === SkipDocument) {
+              if (twiceChainedFilter === SkipDocument) {
                 if (chainedOptions?.includeResultMetadata === false) {
                   return {
                     type: "Document",
@@ -1845,7 +1844,7 @@ export class HookedCollection<
               if (chainedOptions) {
                 const result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndDelete(
                   // @ts-expect-error
-                  filter?._id === _id ? filter as Filter<TSchema> : { $and: [{ _id }, filter as Filter<TSchema>] },
+                  twiceChainedFilter?._id === _id ? twiceChainedFilter as Filter<TSchema> : { $and: [{ _id }, twiceChainedFilter as Filter<TSchema>] },
                   chainedOptions
                 ));
 
@@ -1862,7 +1861,7 @@ export class HookedCollection<
               }
               const result = await this.#collection.findOneAndDelete(
                 // @ts-expect-error
-                filter?._id === _id ? filter as Filter<TSchema> : { $and: [{ _id }, filter as Filter<TSchema>] }
+                twiceChainedFilter?._id === _id ? twiceChainedFilter as Filter<TSchema> : { $and: [{ _id }, twiceChainedFilter as Filter<TSchema>] }
               );
               result.value = result.value && this.#transform(result.value);
               return {
@@ -1900,7 +1899,7 @@ export class HookedCollection<
             chainedOptions
           )
         },
-        chainedOptions,
+        options,
         {
           event: "findOne*",
           emitArgs: {
@@ -1908,15 +1907,15 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
-  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, chainedOptions: AmendedFindOneAndUpdateOptions<TSchema> & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
-  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, chainedOptions: AmendedFindOneAndUpdateOptions<TSchema> & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
-  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, chainedOptions: AmendedFindOneAndUpdateOptions<TSchema>): Promise<WithId<TSchema> | null>;
+  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options: AmendedFindOneAndUpdateOptions<TSchema> & { includeResultMetadata: true; }): Promise<ModifyResult<TSchema>>;
+  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options: AmendedFindOneAndUpdateOptions<TSchema> & { includeResultMetadata: false; }): Promise<WithId<TSchema> | null>;
+  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options: AmendedFindOneAndUpdateOptions<TSchema>): Promise<WithId<TSchema> | null>;
   async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>): Promise<ModifyResult<TSchema>>;
-  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, chainedOptions?: AmendedFindOneAndUpdateOptions<TSchema>): Promise<ModifyResult<TSchema> | WithId<TSchema> | null> {
-    const argsOrig = [filter, update, chainedOptions] as const;
+  async findOneAndUpdate(filter: MaybeStrictFilter<TSchema>, update: UpdateFilter<TSchema>, options?: AmendedFindOneAndUpdateOptions<TSchema>): Promise<ModifyResult<TSchema> | WithId<TSchema> | null> {
+    const argsOrig = [filter, update, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -2029,7 +2028,7 @@ export class HookedCollection<
             chainedOptions
           )
         },
-        chainedOptions,
+        options,
         {
           event: "findOne*",
           emitArgs: {
@@ -2037,16 +2036,16 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
 
-  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, chainedOptions: AmendedFindOneAndReplaceOptions<TSchema> & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
-  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, chainedOptions: AmendedFindOneAndReplaceOptions<TSchema> & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
-  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, chainedOptions: AmendedFindOneAndReplaceOptions<TSchema>): Promise<ModifyResult<TSchema>>;
+  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options: AmendedFindOneAndReplaceOptions<TSchema> & { includeResultMetadata: true }): Promise<ModifyResult<TSchema>>;
+  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options: AmendedFindOneAndReplaceOptions<TSchema> & { includeResultMetadata: false }): Promise<WithId<TSchema> | null>;
+  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options: AmendedFindOneAndReplaceOptions<TSchema>): Promise<ModifyResult<TSchema>>;
   async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>): Promise<ModifyResult<TSchema>>;
-  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, chainedOptions?: AmendedFindOneAndReplaceOptions<TSchema>): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
-    const argsOrig = [filter, replacement, chainedOptions] as const;
+  async findOneAndReplace(filter: MaybeStrictFilter<TSchema>, replacement: WithoutId<TSchema>, options?: AmendedFindOneAndReplaceOptions<TSchema>): Promise<WithId<TSchema> | ModifyResult<TSchema> | null> {
+    const argsOrig = [filter, replacement, options] as const;
     return this.#tryCatchEmit(
       InternalEvents["*"],
       {
@@ -2057,22 +2056,22 @@ export class HookedCollection<
       () => this.#tryCatchEmit(
         "findOneAndReplace",
         {
-          args: [filter, replacement, chainedOptions]
+          args: [filter, replacement, options]
         },
         "args",
         ({
-          beforeHooksResult: [filter, replacement, chainedOptions],
+          beforeHooksResult: [chainedFilter, chainedReplacement, chainedOptions],
           invocationSymbol
         }) => {
           return this.#tryCatchUpdate(
             {
-              args: [filter, replacement, chainedOptions],
+              args: [chainedFilter, chainedReplacement, chainedOptions],
               argsOrig,
               signal: chainedOptions?.signal,
               caller: "findOneAndReplace",
               filterMutator: {
-                filter,
-                replacement
+                filter: chainedFilter,
+                replacement: chainedReplacement
               },
               parentInvocationSymbol: invocationSymbol
             },
@@ -2131,7 +2130,7 @@ export class HookedCollection<
             async () => {
               let result;
               if (chainedOptions) {
-                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndReplace(filter as Filter<TSchema>, replacement, chainedOptions));
+                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndReplace(chainedFilter as Filter<TSchema>, chainedReplacement, chainedOptions));
                 if (chainedOptions.includeResultMetadata === false) {
                   result = result && this.#transform(result);
                 }
@@ -2140,7 +2139,7 @@ export class HookedCollection<
                 }
               }
               else {
-                result = await this.#collection.findOneAndReplace(filter as Filter<TSchema>, replacement);
+                result = await this.#collection.findOneAndReplace(chainedFilter as Filter<TSchema>, chainedReplacement);
                 result.value = result.value && this.#transform(result.value);
               }
               return {
@@ -2158,7 +2157,7 @@ export class HookedCollection<
             chainedOptions
           )
         },
-        chainedOptions,
+        options,
         {
           event: "findOne*",
           emitArgs: {
@@ -2166,7 +2165,7 @@ export class HookedCollection<
           }
         }
       ),
-      chainedOptions
+      options
     );
   }
 }

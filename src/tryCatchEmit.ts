@@ -1,4 +1,4 @@
-import { ExtraEvent, StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
+import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { HookedEventEmitter, internalEventToBeforeAfterKey, ChainedCallbackEventMapWithCaller, SkipDocument } from "./events/index.js";
 
 

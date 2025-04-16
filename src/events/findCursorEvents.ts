@@ -1,7 +1,7 @@
 import type { CountOptions } from "mongodb"
 import { CursorParams, CursorParamsWithArgs, CursorParamsWithArgsAndResult, CursorParamsWithCaller, CursorParamsWithResult } from "./cursorHelperTypes.js"
 import { HookedFindCursorInterface } from "./hookedFindCursorInterface.js"
-import { BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgsNoArgs, ExtractEventDefinitions } from "./helpersTypes.js"
+import { BeforeAfterCallbackArgsAndReturn, ExtractEventDefinitions } from "./helpersTypes.js"
 import { BeforeAfterErrorGenericCursorEventDefinitions } from "./genericCursorEvents.js"
 import { BeforeAfterErrorSharedEventDefinitions } from "./sharedEvents.js"
 

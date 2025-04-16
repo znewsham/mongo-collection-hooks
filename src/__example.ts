@@ -18,20 +18,20 @@ type KeysOfType<T, U, B = false> = {
       : never;
 }[keyof T];
 
-type OmitKeysOfType<T, U> = Omit<T, KeysOfType<T, U, false>>;
+// type OmitKeysOfType<T, U> = Omit<T, KeysOfType<T, U, false>>;
 
 
-class Example<TSchema extends Document> {
+export class Example<TSchema extends Document> {
   constructor(thing: TSchema) {
-    const keys: KeysOfType<Generic<TSchema>, number> = "cleanNumber";
+    const _keys: KeysOfType<Generic<TSchema>, number> = "cleanNumber";
 
-    const aThing1: Omit<Generic<TSchema>, "cleanNumber"> = {
+    const _aThing1: Omit<Generic<TSchema>, "cleanNumber"> = {
       cleanString: "string",
       thing
     };
 
-    const aThing: OmitKeysOfType<Generic<TSchema>, number> = {
+    // const _aThing: OmitKeysOfType<Generic<TSchema>, number> = {
 
-    }
+    // }
   }
 }
