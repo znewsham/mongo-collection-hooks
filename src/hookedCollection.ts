@@ -90,7 +90,7 @@ type TypedDeleteResult<TSchema extends Document> = {
 }
 
 interface HookedFindCursorConstructor<TSchema extends Document> {
-  new (filter: MaybeStrictFilter<TSchema> | undefined, cursor: FindCursor, options: HookedFindCursorOptions<TSchema>): HookedFindCursor
+  new <TSchema1 extends Document>(filter: MaybeStrictFilter<TSchema> | undefined, cursor: FindCursor, options: HookedFindCursorOptions<TSchema>): HookedFindCursor<TSchema1>
 }
 
 type HookedCollectionOptions<TSchema extends Document> = {
