@@ -1,5 +1,5 @@
-import type { FindCursor, Document, CountOptions } from "mongodb";
-import { CallerType, Events, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller, HookedFindCursorInterface, FindCursorHookedEventMap } from "./events/index.js";
+import type { FindCursor, Document, CountOptions, Filter } from "mongodb";
+import { CallerType, Events, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller, HookedFindCursorInterface, FindCursorHookedEventMap, MaybeStrictFilter } from "./events/index.js";
 import { AbstractHookedFindCursor } from "./abstractFindCursorImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
@@ -15,19 +15,19 @@ export interface HookedFindCursorOptions<TSchema> {
   interceptExecute: boolean,
   invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>
 }
-export class HookedFindCursor<TSchema = any> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
+export class HookedFindCursor<TSchema = any, CollectionSchema extends Document = Document> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
   #transform?:(doc: TSchema) => any;
   #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
   #findInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
   #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next" | "find.cursor.close">;
   #cursor: FindCursor<TSchema>;
-  #filter: Document;
+  #filter: MaybeStrictFilter<CollectionSchema>;
   #interceptExecute: boolean;
   #tryCatchEmit = getTryCatch<BeforeAfterErrorFindCursorEventDefinitions<TSchema>>();
   #invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>;
 
-  constructor(filter: Document | undefined, findCursor: FindCursor<TSchema>, {
+  constructor(filter: MaybeStrictFilter<CollectionSchema> | undefined, findCursor: FindCursor<TSchema>, {
     transform,
     events,
     invocationSymbol,
@@ -59,15 +59,15 @@ export class HookedFindCursor<TSchema = any> extends AbstractHookedFindCursor<TS
   }
 
 
-  filter(filter: Document): this {
+  filter(filter: Filter<CollectionSchema>): this {
     this.#cursor.filter(filter);
     this.#filter = filter;
     return this;
   }
 
-  addFilter(filter: Document) {
+  addFilter(filter: Filter<CollectionSchema>) {
     return this.filter({
-      $and: [this.#filter, filter]
+      $and: [this.#filter as Filter<CollectionSchema>, filter]
     });
   }
 
@@ -624,9 +624,9 @@ export class HookedFindCursor<TSchema = any> extends AbstractHookedFindCursor<TS
     }
   }
 
-  clone(): HookedFindCursor<TSchema> {
+  clone(): HookedFindCursor<TSchema, CollectionSchema> {
     const eventNames = this.#ee.eventNames();
-    return new HookedFindCursor<TSchema>(this.#filter, this.#cursor.clone(), {
+    return new HookedFindCursor<TSchema, CollectionSchema>(this.#filter, this.#cursor.clone(), {
       invocationSymbol: this.#findInvocationSymbol,
       transform: this.#transform,
       events: Object.fromEntries(

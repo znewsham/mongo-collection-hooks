@@ -92,13 +92,6 @@ interface HookedFindCursorConstructor {
   new <CoSchema extends Document, CuSchema extends Document>(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>): HookedFindCursor<CuSchema>
 }
 
-// I hate that we need this trivial wrapper class - but it's necessary to infer the filter, cursor and options types
-class WrappedHookedFindCursor<CoSchema extends Document, CuSchema extends Document> extends HookedFindCursor<CuSchema> {
-  constructor(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>) {
-    super(filter, cursor, options);
-  }
-}
-
 type HookedCollectionOptions = {
   transform?: (doc: any) => any,
   findCursorImpl?: HookedFindCursorConstructor,
@@ -114,7 +107,7 @@ export class HookedCollection<
   #ee: HookedEventEmitter<CollectionHookedEventMap<TSchema>> = new HookedEventEmitter<CollectionHookedEventMap<TSchema>>();
   #interceptExecute: boolean = false;
   #transform: (doc: any) => any = doc => doc;
-  #findCursorImpl: HookedFindCursorConstructor = WrappedHookedFindCursor;
+  #findCursorImpl: HookedFindCursorConstructor = HookedFindCursor;
 
   constructor(
     collection: Collection<TSchema>,
