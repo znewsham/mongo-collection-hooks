@@ -15,7 +15,7 @@ export interface HookedFindCursorOptions<TSchema> {
   interceptExecute: boolean,
   invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>
 }
-export class HookedFindCursor<TSchema> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
+export class HookedFindCursor<TSchema = any> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
   #transform?:(doc: TSchema) => any;
   #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
   #findInvocationSymbol: symbol;

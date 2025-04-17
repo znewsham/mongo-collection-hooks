@@ -41,7 +41,6 @@ import {
   CollectionHookedEventMap,
   HookedCollectionInterface,
   HookedAggregationCursorInterface,
-  HookedFindCursorInterface,
   FindCursorHookedEventMap,
   AggregationCursorHookedEventMap,
   SkipDocument,
@@ -89,13 +88,20 @@ type TypedDeleteResult<TSchema extends Document> = {
   result: WithId<TSchema> | null
 }
 
-interface HookedFindCursorConstructor<TSchema extends Document> {
-  new <TSchema1 extends Document>(filter: MaybeStrictFilter<TSchema> | undefined, cursor: FindCursor, options: HookedFindCursorOptions<TSchema>): HookedFindCursor<TSchema1>
+interface HookedFindCursorConstructor {
+  new <CoSchema extends Document, CuSchema extends Document>(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>): HookedFindCursor<CuSchema>
 }
 
-type HookedCollectionOptions<TSchema extends Document> = {
+// I hate that we need this trivial wrapper class - but it's necessary to infer the filter, cursor and options types
+class WrappedHookedFindCursor<CoSchema extends Document, CuSchema extends Document> extends HookedFindCursor<CuSchema> {
+  constructor(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>) {
+    super(filter, cursor, options);
+  }
+}
+
+type HookedCollectionOptions = {
   transform?: (doc: any) => any,
-  findCursorImpl?: HookedFindCursorConstructor<TSchema>,
+  findCursorImpl?: HookedFindCursorConstructor,
   interceptExecute?: boolean
 };
 
@@ -108,11 +114,11 @@ export class HookedCollection<
   #ee: HookedEventEmitter<CollectionHookedEventMap<TSchema>> = new HookedEventEmitter<CollectionHookedEventMap<TSchema>>();
   #interceptExecute: boolean = false;
   #transform: (doc: any) => any = doc => doc;
-  #findCursorImpl: HookedFindCursorConstructor<TSchema> = HookedFindCursor;
+  #findCursorImpl: HookedFindCursorConstructor = WrappedHookedFindCursor;
 
   constructor(
     collection: Collection<TSchema>,
-    options?: HookedCollectionOptions<TSchema>
+    options?: HookedCollectionOptions
   ) {
     super(collection);
     this.#collection = collection;
@@ -285,10 +291,9 @@ export class HookedCollection<
       options
     );
     try {
-      const actualCursor = this.#find<T>(chainedFilter as Filter<TSchema>, chainedOptions);
-      // we need as X here because it's hard (impossible) to make the args aware of the custom T used by find vs TSchema of the collection
+      const actualCursor = this.#find<T>(chainedFilter, chainedOptions);
       let cursor = new this.#findCursorImpl(
-        chainedFilter as Filter<TSchema>,
+        chainedFilter,
         actualCursor,
         {
           // transform: this.#transform,
@@ -302,7 +307,7 @@ export class HookedCollection<
           invocationOptions: options,
           transform: this.#transform
         }
-      ) as HookedFindCursorInterface<T>;
+      );
 
       const chainedCursor = this.#ee.callAllSyncChainWithKey(
         {
