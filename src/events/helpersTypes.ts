@@ -23,7 +23,14 @@ export type NoReturns<O extends { isPromise?: boolean } = {}> = {
   isPromise: O["isPromise"] extends false ? false : true
 }
 
-type ItemMapEntry = {
+export type Merge<A extends Record<string, any>, B extends Record<string, any>> = A & Omit<B, keyof A>
+
+export type KeysMatching<T, V> = {
+  [K in keyof T]: T[K] extends V ? K : never;
+}[keyof T];
+
+
+export type ItemMapEntry = {
   emitArgs: any,
   isPromise: boolean
   options?: any,
@@ -32,7 +39,7 @@ type ItemMapEntry = {
 
 export type BeforeAfterCallbackArgsAndReturn<
   BIM extends Record<string, ItemMapEntry>,
-  BIMNames extends keyof BIM = keyof BIM
+  BIMNames extends keyof BIM & string = keyof BIM & string
 > = {
   [k in BIMNames]: {
     callbackArgs:
@@ -42,24 +49,34 @@ export type BeforeAfterCallbackArgsAndReturn<
     } & BIM[k]["emitArgs"] & { hookOptions: BIM[k] extends { options: StandardDefineHookOptions } ? BIM[k]["options"] : StandardDefineHookOptions },
     emitArgs: BIM[k]["emitArgs"],
     returns: BIM[k] extends { returns: any } ? BIM[k]["returns"] : never,
-    isPromise: BIM[k]["isPromise"],
-    returnEmitName: BIM[k] extends { returnEmitName: never } ? never : BIM[k]["returnEmitName"],
     options: BIM[k] extends { options: StandardDefineHookOptions } ? BIM[k]["options"] : StandardDefineHookOptions,
-    caller: BIM[k] extends { caller: any } ? BIM[k]["caller"] : undefined
+    caller: BIM[k] extends { caller: any } ? BIM[k]["caller"] : undefined,
+
+    // these two fields need this bizare structure - for some reason even though what is passed in *ALWAYS* has an isPromise value,
+    // without these lines, generic usage of this helper type doesn't map to ChainedCallbackEventMapWithCaller
+    isPromise: BIM[k]["isPromise"] extends boolean ? BIM[k]["isPromise"] : true,
+    returnEmitName: BIM[k] extends { returnEmitName: never } ? never : BIM[k] extends { returnEmitName: string } ? BIM[k]["returnEmitName"] : string,
+
   }
 }
 
 export const SkipDocument = Symbol("SkipDocument");
 
+export type ExtractStandardBeforeAfterEventDefinitions<
+  EventMap extends Record<string, { before: InternalEventDefinition, success: InternalEventDefinition, error: InternalEventDefinition, after: InternalEventDefinition }>
+> = ExtractEventDefinitions<EventMap, "before", "before", 0>
+  & ExtractEventDefinitions<EventMap, "after", "success", "success">
+  & ExtractEventDefinitions<EventMap, "after", "error", "error">
+  & ExtractEventDefinitions<EventMap, "after", "after", 0>
 
 export type ExtractEventDefinitions<
-  EventMap extends Record<string, { before?: any, success?: any, error?: any, after?: any }>,
-  Prefix extends string,
+  EventMap extends Record<string, { before: InternalEventDefinition, success: InternalEventDefinition, error: InternalEventDefinition, after: InternalEventDefinition }>,
+  Prefix extends "before" | "after",
   Accessor extends "before" | "success" | "error" | "after",
   Suffix extends string | number = number,
-  K extends keyof EventMap & string = keyof EventMap & string
+  // K extends keyof EventMap & string = keyof EventMap & string
 > = {
-  [k in K as (Suffix extends string ? `${Prefix}.${k}.${Suffix}`: `${Prefix}.${k}`)]: EventMap[k][Accessor]
+  [k in keyof EventMap & string as (Suffix extends string ? `${Prefix}.${k}.${Suffix}`: `${Prefix}.${k}`)]: EventMap[k][Accessor]
 }
 
 export type AfterInternalSuccessEmitArgs<O extends CommonDefinitionWithCaller> = {
@@ -210,4 +227,13 @@ export type CommonDefinition = {
 
 export type CommonDefinitionWithCaller = CommonDefinition & {
   caller: string
+}
+
+
+export type InternalEventDefinition = {
+  isPromise: boolean,
+  emitArgs: any,
+  options?: any,
+  returns?: any,
+  returnEmitName: string | never,
 }

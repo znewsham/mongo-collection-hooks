@@ -8,6 +8,7 @@ import { defineAsyncIteratorTests } from "./asyncIterator.js";
 import { defineRewindTests } from "./rewind.js";
 import { defineCloseTests } from "./close.js";
 import { defineCloneTests } from "./clone.js";
+import { defineExtendedTests } from "./extended.js";
 
 describe("findCursor", () => {
   defineToArrayTests();
@@ -18,4 +19,5 @@ describe("findCursor", () => {
   defineRewindTests();
   defineCloseTests();
   defineCloneTests();
+  defineExtendedTests();
 });

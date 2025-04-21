@@ -22,9 +22,7 @@ import { HookedFindCursor, HookedFindCursorOptions } from "./hookedFindCursor.js
 
 import {
   CollectionBeforeAfterErrorEventDefinitions,
-  EventNames,
   Events,
-  FindCursorEventsSet,
   HookedEventEmitter,
   InternalEvents,
   HookedListenerCallback,
@@ -41,21 +39,22 @@ import {
   CollectionHookedEventMap,
   HookedCollectionInterface,
   HookedAggregationCursorInterface,
-  FindCursorHookedEventMap,
   AggregationCursorHookedEventMap,
   SkipDocument,
+  ChainedCallbackEventMapWithCaller,
 } from "./events/index.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { unionOfProjections } from 'mongo-collection-helpers';
 import { CallbackAndOptionsOfEm, StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
-import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, AmendedFindOneOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, MaybeStrictFilter, UpsertCallArgs } from './events/collectionEvents.js';
+import { AmendedCountDocumentsOptions, AmendedCountOptions, AmendedEstimatedDocumentCountOptions, AmendedFindOneAndDeleteOptions, AmendedFindOneAndReplaceOptions, AmendedFindOneAndUpdateOptions, AmendedFindOneOptions, CollectionOnlyBeforeAfterErrorEventDefinitions, MaybeStrictFilter, ExternalBeforeAfterEvent, UpsertCallArgs } from './events/collectionEvents.js';
 import { BeforeAfterErrorSharedEventDefinitions } from './events/sharedEvents.js';
 import { BulkWriteError, BulkWriteResult } from './bulkError.js';
 import { maybeParallel } from './maybeParallel.js';
 import { raceSignal } from './raceSignal.js';
 import { DocumentCache } from './documentCache.js';
+import { BeforeAfterCallbackArgsAndReturn, CommonDefinition, ExtractStandardBeforeAfterEventDefinitions, KeysMatching, Merge } from './events/helpersTypes.js';
 
 /** A MongoDB filter can be some portion of the schema or a set of operators @public */
 type Filter<TSchema> = {
@@ -92,19 +91,30 @@ interface HookedFindCursorConstructor {
   new <CoSchema extends Document, CuSchema extends Document>(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>): HookedFindCursor<CuSchema>
 }
 
+
 type HookedCollectionOptions = {
   transform?: (doc: any) => any,
   findCursorImpl?: HookedFindCursorConstructor,
   interceptExecute?: boolean
 };
 
+
+export type StandardInvokeHookOptionsFromCollection<T> = T extends HookedCollection<any, any, any, any, infer AllEvents> ? StandardInvokeHookOptions<AllEvents> : never;
+
 export class HookedCollection<
-  TSchema extends Document = Document
+  TSchema extends Document = Document,
+  ExtraBeforeAfterEvents extends Record<string, ExternalBeforeAfterEvent<CommonDefinition & { result: any }>> = {},
+  ExtractedEvents extends ExtractStandardBeforeAfterEventDefinitions<ExtraBeforeAfterEvents> = ExtractStandardBeforeAfterEventDefinitions<ExtraBeforeAfterEvents>,
+  ExtraEvents extends ChainedCallbackEventMapWithCaller = BeforeAfterCallbackArgsAndReturn<ExtractedEvents>,
+  AllEvents extends (ChainedCallbackEventMapWithCaller & CollectionHookedEventMap<TSchema>) = Merge<CollectionHookedEventMap<TSchema>, ExtraEvents>
 > extends AbstractHookedCollection<TSchema> implements HookedCollectionInterface<TSchema> {
   #collection: Collection<TSchema>;
   static Events = Events;
+  map: CollectionHookedEventMap<TSchema>;
   // #transform?: (doc: TSchema) => any;
-  #ee: HookedEventEmitter<CollectionHookedEventMap<TSchema>> = new HookedEventEmitter<CollectionHookedEventMap<TSchema>>();
+  #ee = new HookedEventEmitter<CollectionHookedEventMap<TSchema>>();
+  // we lose all typing of the known internal events if #ee is HookedEventEmitter<AllEvents> - but if we don't provide #externalEE, we lose the ability to type the provided additional events
+  #externalEE = this.#ee as unknown as HookedEventEmitter<AllEvents>;
   #interceptExecute: boolean = false;
   #transform: (doc: any) => any = doc => doc;
   #findCursorImpl: HookedFindCursorConstructor = HookedFindCursor;
@@ -129,6 +139,7 @@ export class HookedCollection<
 
   aggregate<T extends Document>(pipeline: Document[], options?: AmendedAggregateOptions): AggregationCursor<T> {
     const invocationSymbol = Symbol("aggregate");
+
     const [chainedPipeline, chainedOptions] = this.#ee.callSyncChainWithKey(
       "before.aggregate",
       {
@@ -287,16 +298,13 @@ export class HookedCollection<
       const actualCursor = this.#find<T>(chainedFilter, chainedOptions);
       let cursor = new this.#findCursorImpl(
         chainedFilter,
+        // @ts-expect-error something about passing the type of events caused this to think it's of type TSchema when it's of type T
         actualCursor,
         {
           // transform: this.#transform,
           interceptExecute: this.#interceptExecute,
           invocationSymbol,
-          events: Object.fromEntries(
-            this.#ee.eventNames()
-            .filter(name => FindCursorEventsSet.has(name as keyof FindCursorHookedEventMap<any>))
-            .map(name => [name, this.#ee.awaitableListenersWithOptions(name)])
-          ),
+          ee: this.#externalEE,
           invocationOptions: options,
           transform: this.#transform
         }
@@ -338,6 +346,35 @@ export class HookedCollection<
       );
       throw e;
     }
+  }
+
+  protected async _tryCatchEmit<
+    HEM extends AllEvents,
+    // TODO: clean this up - ties into tryCatchEmit.ts
+    T extends (callArgs: HEM[BE]["emitArgs"]["args"] extends never
+      ? { invocationSymbol: symbol }
+      : HEM[BE] extends { returns: any }
+        ? { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }
+        : { invocationSymbol: symbol }
+      ) => Promise<HEM[AE]["emitArgs"]["result"]>,
+    BE extends `before.${IE}` & keyof HEM,
+    AE extends `after.${IE}.success` & keyof HEM,
+    // dunno why & string is required here :shrug:
+    IE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema> | (KeysMatching<ExtraBeforeAfterEvents, { forCollection: true }> & string),
+    // TODO: this is a bit of a hack. It stops us getting typeerrors on things like findOne*
+    OIE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema> | (KeysMatching<ExtraBeforeAfterEvents, { forCollection: true }> & string),
+    EA extends HEM[BE]["emitArgs"],
+    OEA extends Omit<EA, "invocationSymbol" | "thisArg" | "signal">
+  >(
+    internalEvent: IE,
+    emitArgs: OEA,
+    beforeChainKey: (keyof OEA & HEM[BE]["returnEmitName"]) | undefined,
+    fn: T,
+    invocationOptions: StandardInvokeHookOptions<AllEvents, `before.${IE}` | `after.${IE}.success`> | undefined,
+    ...additionalInternalEvents: OIE[] | { event: OIE, emitArgs: Partial<HEM[`before.${OIE}`]["emitArgs"]> }[]
+  ) {
+    // @ts-expect-error HEM isn't technically of the correct type, but we know it is - this allows the private use of #tryCatchEmit to benefit from strong typing
+    return this.#tryCatchEmit<HEM, T, BE, AE, IE, OIE, EA, OEA>(internalEvent, emitArgs, beforeChainKey, fn, invocationOptions, ...additionalInternalEvents);
   }
 
   async #tryCatchEmit<
@@ -1673,38 +1710,42 @@ export class HookedCollection<
     );
   }
 
-  hooks<K extends keyof CollectionHookedEventMap<TSchema>>(
+  hooks<K extends keyof AllEvents>(
     eventName: K
-  ): CallbackAndOptionsOfEm<CollectionHookedEventMap<TSchema>, K>[] {
-    return this.#ee.awaitableListenersWithOptions(eventName);
+  ): CallbackAndOptionsOfEm<AllEvents, K>[] {
+    return this.#externalEE.awaitableListenersWithOptions(eventName);
   }
 
   allHooksWithOptions() {
-    return this.#ee.allListenersWithOptions().map(({ listener, eventName, options }) => ({
+    return this.#externalEE.allListenersWithOptions().map(({ listener, eventName, options }) => ({
       hook: listener,
       eventName,
       options
     }));
   }
 
-  on<K extends keyof CollectionHookedEventMap<TSchema>>(
+  on<
+    K extends keyof AllEvents
+  >(
     eventName: K,
-    listener: HookedListenerCallback<K, CollectionHookedEventMap<TSchema>>,
-    options?: CollectionHookedEventMap<TSchema>[K]["options"]
+    listener: HookedListenerCallback<K, AllEvents>,
+    options?: AllEvents[K]["options"]
   ) {
-    this.#ee.awaitableOn(eventName, listener, options);
+    this.#externalEE.awaitableOn(eventName, listener, options);
     return this;
   }
 
   off<
-    K extends keyof CollectionHookedEventMap<TSchema> & EventNames
+    K extends keyof AllEvents,
   >(
     eventName: K,
-    listener: HookedListenerCallback<K, CollectionHookedEventMap<TSchema>>
+    listener: HookedListenerCallback<K, AllEvents>
   ) {
-    this.#ee.awaitableOff(eventName, listener);
+    this.#externalEE.awaitableOff(eventName, listener);
     return this;
   }
+
+
 
   count(filter?: MaybeStrictFilter<TSchema> | undefined, options?: AmendedCountOptions | undefined): Promise<number> {
     return this.#tryCatchEmit(

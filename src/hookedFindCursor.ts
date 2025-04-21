@@ -1,23 +1,26 @@
 import type { FindCursor, Document, CountOptions, Filter } from "mongodb";
-import { CallerType, Events, HookedEventEmitter, InternalEvents, PartialCallbackMap, assertCaller, HookedFindCursorInterface, FindCursorHookedEventMap, MaybeStrictFilter } from "./events/index.js";
+import { CallerType, Events, HookedEventEmitter, InternalEvents, assertCaller, HookedFindCursorInterface, FindCursorHookedEventMap, MaybeStrictFilter, ChainedCallbackEventMapWithCaller } from "./events/index.js";
 import { AbstractHookedFindCursor } from "./abstractFindCursorImpl.js";
 import { getTryCatch } from "./tryCatchEmit.js";
 import { StandardInvokeHookOptions } from "./awaiatableEventEmitter.js";
 import { BeforeAfterErrorFindCursorEventDefinitions } from "./events/findCursorEvents.js";
+import { ExternalBeforeAfterEvent } from "./events/collectionEvents.js";
+import { BeforeAfterCallbackArgsAndReturn, CommonDefinition, ExtractStandardBeforeAfterEventDefinitions, KeysMatching, Merge } from "./events/helpersTypes.js";
+import { BeforeAfterErrorSharedEventDefinitions } from "./events/sharedEvents.js";
 
-export interface HookedFindCursorOptions<TSchema> {
+export interface HookedFindCursorOptions<TSchema, CursorEvents extends ChainedCallbackEventMapWithCaller = FindCursorHookedEventMap<TSchema>> {
   transform?: (doc: TSchema) => any,
-  events: PartialCallbackMap<
-    keyof FindCursorHookedEventMap<TSchema>,
-    FindCursorHookedEventMap<TSchema>
-  >,
+  ee: HookedEventEmitter<CursorEvents>,
   invocationSymbol: symbol,
   interceptExecute: boolean,
   invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>
 }
-export class HookedFindCursor<TSchema = any, CollectionSchema extends Document = Document> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
+export class HookedFindCursor<
+  TSchema = any,
+  CollectionSchema extends Document = Document
+> extends AbstractHookedFindCursor<TSchema> implements HookedFindCursorInterface<TSchema> {
   #transform?:(doc: TSchema) => any;
-  #ee = new HookedEventEmitter<FindCursorHookedEventMap<TSchema>>();
+  #ee: HookedEventEmitter<FindCursorHookedEventMap<TSchema>>;
   #findInvocationSymbol: symbol;
   #currentInvocationSymbol: symbol;
   #caller: CallerType<"find.cursor.asyncIterator" | "find.cursor.forEach" | "find.cursor.toArray"  | "find.cursor.count" | "find.cursor.execute" | "find.cursor.next" | "find.cursor.close">;
@@ -25,15 +28,16 @@ export class HookedFindCursor<TSchema = any, CollectionSchema extends Document =
   #filter: MaybeStrictFilter<CollectionSchema>;
   #interceptExecute: boolean;
   #tryCatchEmit = getTryCatch<BeforeAfterErrorFindCursorEventDefinitions<TSchema>>();
+  protected __tryCatchEmit = this.#tryCatchEmit;
   #invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>;
 
   constructor(filter: MaybeStrictFilter<CollectionSchema> | undefined, findCursor: FindCursor<TSchema>, {
     transform,
-    events,
+    ee,
     invocationSymbol,
     interceptExecute = false,
     invocationOptions
-  }: HookedFindCursorOptions<TSchema>) {
+  }: HookedFindCursorOptions<TSchema, FindCursorHookedEventMap<TSchema>>) {
     super(findCursor);
     this.#transform = transform;
     this.#cursor = findCursor;
@@ -41,15 +45,7 @@ export class HookedFindCursor<TSchema = any, CollectionSchema extends Document =
     this.#findInvocationSymbol = invocationSymbol;
     this.#currentInvocationSymbol = invocationSymbol;
     this.#invocationOptions = invocationOptions;
-    Object.entries(events).forEach(([name, listeners]) => {
-      listeners.forEach(({ listener, options }) => {
-        this.#ee.addListener(
-          name as keyof FindCursorHookedEventMap<any>,
-          listener,
-          options
-        );
-      });
-    });
+    this.#ee = ee;
     this.#interceptExecute = interceptExecute;
   }
 
@@ -625,16 +621,68 @@ export class HookedFindCursor<TSchema = any, CollectionSchema extends Document =
   }
 
   clone(): HookedFindCursor<TSchema, CollectionSchema> {
-    const eventNames = this.#ee.eventNames();
     return new HookedFindCursor<TSchema, CollectionSchema>(this.#filter, this.#cursor.clone(), {
       invocationSymbol: this.#findInvocationSymbol,
       transform: this.#transform,
-      events: Object.fromEntries(
-        eventNames
-        .map(name => [name, this.#ee.awaitableListeners(name)])
-      ),
+      ee: this.#ee,
       interceptExecute: this.#interceptExecute,
       invocationOptions: this.#invocationOptions
     });
+  }
+}
+
+
+export class ExtendableHookedFindCursor<
+  TSchema = any,
+  CollectionSchema extends Document = Document,
+  ExtraBeforeAfterEvents extends Record<string, ExternalBeforeAfterEvent<CommonDefinition & { result: any }>> = {},
+  ExtraEvents extends ChainedCallbackEventMapWithCaller = BeforeAfterCallbackArgsAndReturn<ExtractStandardBeforeAfterEventDefinitions<ExtraBeforeAfterEvents>>,
+  AllEvents extends ChainedCallbackEventMapWithCaller = Merge<FindCursorHookedEventMap<TSchema>, ExtraEvents>
+> extends HookedFindCursor<TSchema, CollectionSchema> {
+  #externalEE = this.ee as unknown as HookedEventEmitter<AllEvents>;
+
+
+  protected async _tryCatchEmit<
+    HEM extends AllEvents,
+    // TODO: clean this up - ties into tryCatchEmit.ts
+    T extends (callArgs: HEM[BE]["emitArgs"]["args"] extends never
+      ? { invocationSymbol: symbol }
+      : HEM[BE] extends { returns: any }
+        ? { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }
+        : { invocationSymbol: symbol }
+      ) => Promise<HEM[AE]["emitArgs"]["result"]>,
+    BE extends `before.${IE}` & keyof HEM,
+    AE extends `after.${IE}` & keyof HEM,
+    // dunno why & string is required here :shrug:
+    IE extends keyof BeforeAfterErrorFindCursorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema extends Document ? TSchema : Document> | (KeysMatching<ExtraBeforeAfterEvents, { forCursor: true }> & string),
+    // TODO: this is a bit of a hack. It stops us getting typeerrors on things like findOne*
+    OIE extends keyof BeforeAfterErrorFindCursorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema extends Document ? TSchema : Document> | (KeysMatching<ExtraBeforeAfterEvents, { forCursor: true }> & string),
+
+    EA extends HEM[BE]["emitArgs"],
+    OEA extends Omit<EA, "invocationSymbol" | "thisArg" | "signal">
+  >(
+    internalEvent: IE,
+    emitArgs: OEA,
+    beforeChainKey: (keyof OEA & HEM[BE]["returnEmitName"]) | undefined,
+    chainResults: HEM[AE]["returnEmitName"] extends never ? false : true,
+    fn: T,
+    invocationOptions: StandardInvokeHookOptions<AllEvents, `before.${IE}` | `after.${IE}.success`> | undefined,
+    ...additionalInternalEvents: OIE[] | { event: OIE, emitArgs: Partial<HEM[`before.${OIE}`]["emitArgs"]> }[]
+  ) {
+    const { caller, args } = emitArgs;
+    return this.__tryCatchEmit(
+      this.#externalEE,
+      fn,
+      caller,
+      args,
+      // @ts-expect-error we're going to be opinionated that we shouldn't be passing in additional emit args
+      {},
+      beforeChainKey === undefined ? false : true,
+      chainResults,
+      beforeChainKey,
+      invocationOptions,
+      internalEvent,
+      ...additionalInternalEvents
+    );
   }
 }
