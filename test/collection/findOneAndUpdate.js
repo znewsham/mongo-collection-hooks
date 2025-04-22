@@ -7,7 +7,7 @@ import { updateTests } from "./update.js";
 import { Test } from "../testClass.js";
 
 export function defineFindOneAndUpdate() {
-  describe.only("findOneAndUpdate", () => {
+  describe("findOneAndUpdate", () => {
     it("should pass the options between before hooks correctly", async () => {
       const result = await hooksChain("before.findOneAndUpdate", "args", ({ hookedCollection }) => hookedCollection.findOneAndUpdate({ _id: "test" }, { $set: { value: "test" } }), [[{ _id: "test" }, { $set: { value: "test" } }], [{ _id: "test" }, { $set: { value: "test" } }]]);
       // TODO: test only problem - does it return the updated value or the old one?
@@ -49,7 +49,7 @@ export function defineFindOneAndUpdate() {
       assert.ok(result.value instanceof Test, "transform worked");
     });
 
-    it.only("should use chained options instead of original options", async () => {
+    it("should use chained options instead of original options", async () => {
       const { hookedCollection, fakeCollection } = getHookedCollection([{ _id: "test" }]);
       const mockFindOneAndUpdate = mock.method(fakeCollection, "findOneAndUpdate");
 

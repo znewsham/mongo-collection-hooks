@@ -8,9 +8,9 @@ import { ExternalBeforeAfterEvent } from "./events/collectionEvents.js";
 import { BeforeAfterCallbackArgsAndReturn, CommonDefinition, ExtractStandardBeforeAfterEventDefinitions, KeysMatching, Merge } from "./events/helpersTypes.js";
 import { BeforeAfterErrorSharedEventDefinitions } from "./events/sharedEvents.js";
 
-export interface HookedFindCursorOptions<TSchema, CursorEvents extends ChainedCallbackEventMapWithCaller = FindCursorHookedEventMap<TSchema>> {
+export interface HookedFindCursorOptions<TSchema> {
   transform?: (doc: TSchema) => any,
-  ee: HookedEventEmitter<CursorEvents>,
+  ee: HookedEventEmitter<FindCursorHookedEventMap<TSchema>>,
   invocationSymbol: symbol,
   interceptExecute: boolean,
   invocationOptions?: StandardInvokeHookOptions<FindCursorHookedEventMap<TSchema>>
@@ -37,7 +37,7 @@ export class HookedFindCursor<
     invocationSymbol,
     interceptExecute = false,
     invocationOptions
-  }: HookedFindCursorOptions<TSchema, FindCursorHookedEventMap<TSchema>>) {
+  }: HookedFindCursorOptions<TSchema>) {
     super(findCursor);
     this.#transform = transform;
     this.#cursor = findCursor;

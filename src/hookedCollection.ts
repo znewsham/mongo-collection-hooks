@@ -42,6 +42,7 @@ import {
   AggregationCursorHookedEventMap,
   SkipDocument,
   ChainedCallbackEventMapWithCaller,
+  FindCursorHookedEventMap,
 } from "./events/index.js";
 import { HookedAggregationCursor } from "./hookedAggregationCursor.js";
 import { AbstractHookedCollection } from "./abstractCollectionImpl.js";
@@ -88,7 +89,7 @@ type TypedDeleteResult<TSchema extends Document> = {
 }
 
 interface HookedFindCursorConstructor {
-  new <CoSchema extends Document, CuSchema extends Document>(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>): HookedFindCursor<CuSchema>
+  new <CuSchema extends Document, CoSchema extends Document>(filter: MaybeStrictFilter<CoSchema> | undefined, cursor: FindCursor<CuSchema>, options: HookedFindCursorOptions<CuSchema>): HookedFindCursor<CuSchema>
 }
 
 
@@ -281,7 +282,7 @@ export class HookedCollection<
     return this.#collection.find() as unknown as FindCursor<T>;
   }
 
-  find<T extends Document = TSchema>(filter: MaybeStrictFilter<TSchema> = {}, options?: AmendedFindOptions<TSchema>): HookedFindCursor<T> {
+  find<T extends Document = TSchema>(filter: MaybeStrictFilter<TSchema> = {}, options?: AmendedFindOptions<TSchema>): HookedFindCursor<T, TSchema> {
     const invocationSymbol = Symbol("find");
     const [chainedFilter, chainedOptions] = this.#ee.callSyncChainWithKey(
       Events.before.find,
@@ -296,15 +297,14 @@ export class HookedCollection<
     );
     try {
       const actualCursor = this.#find<T>(chainedFilter, chainedOptions);
-      let cursor = new this.#findCursorImpl(
+      let cursor = new this.#findCursorImpl<T, TSchema>(
         chainedFilter,
-        // @ts-expect-error something about passing the type of events caused this to think it's of type TSchema when it's of type T
         actualCursor,
         {
           // transform: this.#transform,
           interceptExecute: this.#interceptExecute,
           invocationSymbol,
-          ee: this.#externalEE,
+          ee: this.#externalEE as unknown as HookedEventEmitter<FindCursorHookedEventMap<T>>,
           invocationOptions: options,
           transform: this.#transform
         }
@@ -327,7 +327,7 @@ export class HookedCollection<
       if (chainedCursor !== undefined) {
         cursor = chainedCursor;
       }
-      return cursor as unknown as HookedFindCursor<T>;
+      return cursor;
     }
     catch (e) {
       this.#ee.callAllSyncChainWithKey(
