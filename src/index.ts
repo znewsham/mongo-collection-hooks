@@ -20,7 +20,8 @@ export {
   AmendedFindOneAndReplaceOptions,
   AmendedFindOneAndUpdateOptions,
   AmendedFindOneOptions,
-  MaybeStrictFilter
+  MaybeStrictFilter,
+  CommonDefinition
 } from "./events/index.js";
 
 export { StandardInvokeHookOptions } from './awaiatableEventEmitter.js';

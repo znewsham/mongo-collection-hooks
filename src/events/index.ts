@@ -3,7 +3,7 @@ import type {
 } from "mongodb"
 export { ProjectionOfTSchema, NestedProjectionOfTSchema, FilterOfTSchema } from "mongo-collection-helpers";
 import { CallbackAndOptionsOfEm, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
-import { SkipDocument } from "./helpersTypes.js";
+import { SkipDocument, CommonDefinition } from "./helpersTypes.js";
 import { BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions, CollectionHookedEventMap } from "./collectionEvents.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
@@ -37,7 +37,7 @@ export { HookedAggregationCursorInterface } from "./hookedAggregationCursorInter
 export { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 
 export { CollectionBeforeAfterErrorEventDefinitions }
-export { SkipDocument };
+export { SkipDocument, CommonDefinition };
 
 
 type _BeforeAfterEventNames = keyof BeforeAfterErrorCollectionEventDefinitions<Document>

@@ -1,6 +1,6 @@
 {
   "name": "mongo-collection-hooks",
-  "version": "0.2.13-rc.2",
+  "version": "0.2.13-rc.3",
   "description": "",
   "main": "lib/index.js",
   "type": "module",
