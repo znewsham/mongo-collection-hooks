@@ -1,5 +1,5 @@
 export { HookedAggregationCursor } from "./hookedAggregationCursor.js";
-export { HookedCollection, StandardInvokeHookOptionsFromCollection } from "./hookedCollection.js";
+export { HookedCollection, StandardInvokeHookOptionsFromCollection, AllEventsFromCollection } from "./hookedCollection.js";
 export { HookedFindCursor, ExtendableHookedFindCursor, HookedFindCursorOptions } from "./hookedFindCursor.js";
 export {
   Events,

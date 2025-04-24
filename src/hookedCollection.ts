@@ -101,6 +101,7 @@ type HookedCollectionOptions = {
 
 
 export type StandardInvokeHookOptionsFromCollection<T> = T extends HookedCollection<any, any, any, any, infer AllEvents> ? StandardInvokeHookOptions<AllEvents> : never;
+export type AllEventsFromCollection<T> = T extends HookedCollection<any, any, any, any, infer AllEvents> ? AllEvents : never;
 
 export class HookedCollection<
   TSchema extends Document = Document,
