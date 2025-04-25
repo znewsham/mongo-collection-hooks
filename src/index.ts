@@ -21,7 +21,8 @@ export {
   AmendedFindOneAndUpdateOptions,
   AmendedFindOneOptions,
   MaybeStrictFilter,
-  CommonDefinition
+  CommonDefinition,
+  HookedListenerCallback
 } from "./events/index.js";
 
 export { StandardInvokeHookOptions } from './awaiatableEventEmitter.js';

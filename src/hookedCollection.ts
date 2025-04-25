@@ -357,6 +357,7 @@ export class HookedCollection<
       : HEM[BE] extends { returns: any }
         ? { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }
         : { invocationSymbol: symbol }
+        // TODO: support sync operations
       ) => Promise<HEM[AE]["emitArgs"]["result"]>,
     BE extends `before.${IE}` & keyof HEM,
     AE extends `after.${IE}.success` & keyof HEM,
@@ -373,7 +374,7 @@ export class HookedCollection<
     fn: T,
     invocationOptions: StandardInvokeHookOptions<AllEvents, `before.${IE}` | `after.${IE}.success`> | undefined,
     ...additionalInternalEvents: OIE[] | { event: OIE, emitArgs: Partial<HEM[`before.${OIE}`]["emitArgs"]> }[]
-  ) {
+  ): Promise<Awaited<ReturnType<T>>> { // not sure why this isn't inferred - we get Promise<ReturnType<T>> instead, which fails when T returns a promise
     // @ts-expect-error HEM isn't technically of the correct type, but we know it is - this allows the private use of #tryCatchEmit to benefit from strong typing
     return this.#tryCatchEmit<HEM, T, BE, AE, IE, OIE, EA, OEA>(internalEvent, emitArgs, beforeChainKey, fn, invocationOptions, ...additionalInternalEvents);
   }

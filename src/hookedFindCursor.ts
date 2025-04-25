@@ -650,6 +650,7 @@ export class ExtendableHookedFindCursor<
       : HEM[BE] extends { returns: any }
         ? { invocationSymbol: symbol, beforeHooksResult: HEM[BE]["returns"] }
         : { invocationSymbol: symbol }
+        // TODO: support sync operations
       ) => Promise<HEM[AE]["emitArgs"]["result"]>,
     BE extends `before.${IE}` & keyof HEM,
     AE extends `after.${IE}` & keyof HEM,
@@ -660,7 +661,7 @@ export class ExtendableHookedFindCursor<
 
     EA extends HEM[BE]["emitArgs"],
     OEA extends Omit<EA, "invocationSymbol" | "thisArg" | "signal">
-  >(
+  > (
     internalEvent: IE,
     emitArgs: OEA,
     beforeChainKey: (keyof OEA & HEM[BE]["returnEmitName"]) | undefined,
@@ -668,7 +669,7 @@ export class ExtendableHookedFindCursor<
     fn: T,
     invocationOptions: StandardInvokeHookOptions<AllEvents, `before.${IE}` | `after.${IE}.success`> | undefined,
     ...additionalInternalEvents: OIE[] | { event: OIE, emitArgs: Partial<HEM[`before.${OIE}`]["emitArgs"]> }[]
-  ) {
+  ): Promise<Awaited<ReturnType<T>>> { // not sure why this isn't inferred - we get Promise<ReturnType<T>> instead, which fails when T returns a promise
     const { caller, args } = emitArgs;
     return this.__tryCatchEmit(
       this.#externalEE,
