@@ -89,7 +89,10 @@ export function defineFind() {
       hookedCollection.on("after.find.cursor.toArray.success", () => {});
       const cursor = hookedCollection.find();
       assert.strictEqual(cursor.ee.awaitableListeners("after.find.cursor.toArray.success").length, 1);
-      assert.strictEqual(cursor.ee.awaitableListeners("after.aggregation.cursor.toArray.success").length, 0);
+
+      // we used to copy events between the collection and cursor - but this was pretty inefficient,
+      // it also had a whitelist of events - meaning it couldn't copy custom events to the cursor. Far easier just to pass the event emitter
+      assert.strictEqual(cursor.ee.awaitableListeners("after.aggregation.cursor.toArray.success").length, 1);
     });
   });
 }

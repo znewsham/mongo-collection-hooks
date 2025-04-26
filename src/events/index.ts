@@ -3,7 +3,7 @@ import type {
 } from "mongodb"
 export { ProjectionOfTSchema, NestedProjectionOfTSchema, FilterOfTSchema } from "mongo-collection-helpers";
 import { CallbackAndOptionsOfEm, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback } from "../awaiatableEventEmitter.js";
-import { SkipDocument } from "./helpersTypes.js";
+import { SkipDocument, CommonDefinition } from "./helpersTypes.js";
 import { BeforeAfterErrorCollectionEventDefinitions, CollectionBeforeAfterErrorEventDefinitions, CollectionHookedEventMap } from "./collectionEvents.js";
 import { BeforeAfterErrorFindOnlyCursorEventDefinitions, FindCursorHookedEventMap } from "./findCursorEvents.js";
 import { AggregationCursorHookedEventMap, BeforeAfterErrorAggregationOnlyCursorEventDefinitions } from "./aggregationCursorEvents.js";
@@ -26,6 +26,7 @@ export {
   AmendedFindOneAndUpdateOptions,
   AmendedFindOneOptions,
   MaybeStrictFilter,
+  ExternalBeforeAfterEvent,
 } from "./collectionEvents.js";
 
 export { UpdateCallArgs, ReplaceCallArgs, CollectionHookedEventMap } from "./collectionEvents.js";
@@ -36,7 +37,7 @@ export { HookedAggregationCursorInterface } from "./hookedAggregationCursorInter
 export { HookedFindCursorInterface } from "./hookedFindCursorInterface.js";
 
 export { CollectionBeforeAfterErrorEventDefinitions }
-export { SkipDocument };
+export { SkipDocument, CommonDefinition };
 
 
 type _BeforeAfterEventNames = keyof BeforeAfterErrorCollectionEventDefinitions<Document>
@@ -71,8 +72,8 @@ export type PartialCallbackMap<K extends keyof EM, EM extends ChainedCallbackEve
 export type HookedListenerCallback<K extends keyof HEM, HEM extends ChainedCallbackEventMap> = ChainedListenerCallback<HEM, K>
 
 
-type ChainedCallbackEntryWithCaller = ChainedCallbackEntry & { caller: string | undefined };
-export type ChainedCallbackEventMapWithCaller = Record<string, ChainedCallbackEntryWithCaller>
+export type ChainedCallbackEntryWithCaller = ChainedCallbackEntry & { caller: string | undefined };
+export type ChainedCallbackEventMapWithCaller<K extends string = string> = Record<K, ChainedCallbackEntryWithCaller>
 
 export class HookedEventEmitter<HEM extends ChainedCallbackEventMapWithCaller> extends ChainedAwaiatableEventEmitter<HEM> {
   assertCaller<IE extends keyof HEM>(caller: GenericCallerType<HEM>, eventName: IE): asserts caller is GenericCallerType<HEM, typeof eventName> {

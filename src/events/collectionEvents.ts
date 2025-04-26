@@ -29,7 +29,7 @@ import type {
 
 import { ProjectionOfTSchema, FilterOfTSchema } from "mongo-collection-helpers";
 
-import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, CommonDefinition, ExtractEventDefinitions, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar } from "./helpersTypes.js"
+import { AfterInternalSuccessEmitArgs, AfterInternalErrorEmitArgs, BeforeAfterCallbackArgsAndReturn, BeforeInternalEmitArgs, CommonDefinition, NoReturns, ReturnsArgs, ReturnsNamedEmitArg, ReturnsResult, SkipDocument, AfterInternalEmitArgs, BeforeStar, AfterStar, ExtractStandardBeforeAfterEventDefinitions } from "./helpersTypes.js"
 import { StandardDefineHookOptions, StandardInvokeHookOptions } from "../awaiatableEventEmitter.js";
 import { Abortable, Args, ArgsOrig, Caller, ErrorT, InvocationSymbol, ParentInvocationSymbol, Result, ResultOrError, ThisArg } from "./commentedTypes.js";
 import { HookedAggregationCursorInterface } from "./hookedAggregationCursorInterface.js";
@@ -282,15 +282,7 @@ type MaybeOrderedBatch = {
   hookBatchSize?: number
 }
 
-type CollectionBeforeEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "before", "before">
-type CollectionAfterSuccessEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "success", "success">
-type CollectionAfterErrorEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "error", "error">
-type CollectionAfterEventDefinitions<TSchema extends Document> = ExtractEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>, "after", "after">
-
-type AllCollectionEventDefinitions<TSchema extends Document> = CollectionBeforeEventDefinitions<TSchema>
-  & CollectionAfterErrorEventDefinitions<TSchema>
-  & CollectionAfterSuccessEventDefinitions<TSchema>
-  & CollectionAfterEventDefinitions<TSchema>
+type AllCollectionEventDefinitions<TSchema extends Document> = ExtractStandardBeforeAfterEventDefinitions<BeforeAfterErrorCollectionEventDefinitions<TSchema>>
 
 
 type CollectionCallbackArgsAndReturn<TSchema extends Document> = BeforeAfterCallbackArgsAndReturn<AllCollectionEventDefinitions<TSchema>>
@@ -321,7 +313,7 @@ export type AmendedReplaceOptions
   = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "replaceOne" | "insert" | "update">> & ReplaceOptions & AlwaysAttemptOperation;
 export type AmendedDistinctOptions
   = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "distinct">> & DistinctOptions;
-  export type AmendedFindOptions<
+export type AmendedFindOptions<
   TSchema extends Document
 >
   = StandardInvokeHookOptions<CollectionHookedEventMap, BeforeAfterEventNamesOfName<"*" | "find" | "find.cursor.next" | "find.cursor.toArray" | "find.cursor.forEach" | "find.cursor.execute" | "find.cursor.asyncIterator" | "find.cursor.close" | "cursor.next" | "cursor.toArray" | "cursor.forEach" | "cursor.execute" | "cursor.asyncIterator" | "cursor.close">> & ReplaceProjection<FindOptions<TSchema>, TSchema>
@@ -422,6 +414,25 @@ export type FindOneCommon<TSchema extends Document> = {
   custom: {
     operation: "findOne" | "findOneAndDelete" | "findOneAndUpdate" | "findOneAndReplace"
   }
+}
+
+export type ExternalBeforeAfterEvent<
+  O extends CommonDefinition
+  & {
+    result: any,
+    forCursor?: boolean,
+    forCollection?: boolean
+  }
+> = {
+  before: ReturnsArgs<O> & BeforeTopLevelEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  success: ReturnsResult<O> & AfterTopLevelSuccessEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  error: NoReturns<O> & AfterTopLevelErrorEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  after: ReturnsResult<O> & AfterTopLevelEmitArgs<O> & (O extends { options: StandardDefineHookOptions } ? Pick<O, "options"> : { options: StandardDefineHookOptions }),
+  caller?: any,
+  options?: O extends { options: StandardDefineHookOptions } ? O["options"] : StandardDefineHookOptions,
+
+  forCollection: O["forCollection"] extends false ? false : true,
+  forCursor: O["forCursor"] extends true ? true : false
 }
 
 export type BeforeAfterErrorCollectionEventDefinitions<TSchema extends Document> = {

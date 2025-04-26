@@ -785,3 +785,91 @@ type DefineHookOptions = StandardDefineHookOptions
 
 ### TODO - all the others
 They all have the same shape, 180 is a lot of copy/paste.
+
+
+## Extension
+
+In some cases, you may want to modify the behaviour of either the collection, or possibly the `FindCursor` itself. If you just need a custom implementation and no extra typing, you can achieve this by passing a `findCursorImpl` to the collection constructor:
+
+```typescript
+class MyFindCursor<T extends any, TSchema extends Document> extends HookedFindCursor<T, TSchema> {
+
+}
+
+const collection = new HookedCollection(mongoCollection, { findCursorImpl: MyFindCursor });
+```
+
+However, if you require typing of your new class, you unfortunately need to subclass `HookedCollection`
+
+```typescript
+class MyCollection<TSchema extends Document> extends HookedCollection<TSchema> {
+  constructor(collection, options) {
+    super(collection, { findCursorImpl: MyFindCursor, ...options });
+  }
+
+  find<T = any>(...args): MyFindCursor<T, TSchema> {
+    return super.find(...args) as MyFindCursor<T, TSchema>
+  }
+}
+```
+
+### Extending events
+
+In addition to extending the type of cursor returned, you may find you want to tie into the hook system and still retain strong typing for the definition and invocation of those hooks. This can be achieved with an additional generic parameter.
+
+```typescript
+
+
+type MyCollectionExtraEventsDefinition = {
+  "customMethod": ExternalBeforeAfterEvent<{
+    args: [string];
+    result: number;
+    thisArg: ExtendedHookedCollection;
+    forCollection: true;
+  }>;
+};
+
+// --- Custom Cursor Event Definitions ---
+
+type MyCursorExtraEventsDefinition = {
+  "customCursorMethod": ExternalBeforeAfterEvent<{
+    args: [number];
+    result: boolean;
+    forCursor: true;
+    forCollection: false;
+    thisArg: ExtendedHookedFindCursor;
+  }>;
+};
+
+class ExtendedHookedCollection<TSchema extends Document> extends HookedCollection<TSchema, MyCollectionExtraEventsDefinition & MyCursorExtraEventsDefinition> {
+  constructor(collection, options) {
+    super(collection, { findCursorImpl: ExtendedHookedFindCursor, ...options });
+  }
+
+  find<T = any>(...args): ExtendedHookedFindCursor<T, TSchema> {
+    return super.find(...args) as ExtendedHookedFindCursor<T, TSchema>
+  }
+
+  async customMethod(arg: string, options?: StandardInvokeHookOptionsFromCollection<ExtendedHookedCollection<TSchema>>): Promise<number> {
+    // Use the protected _tryCatchEmit method
+    return this._tryCatchEmit(
+      "customMethod",  // The base name of the event
+      { args: [arg] }, // Arguments for the 'before' hook and the operation
+      "args", // Key in emitArgs to chain from 'before' to the operation
+      async ({ beforeHooksResult: [chainedArg] }) => {
+        ...
+      },
+      options
+    );
+  }
+}
+
+class ExtendedHookedFindCursor<
+  TSchema = any,
+  CollectionSchema extends Document = Document
+> extends ExtendableHookedFindCursor<TSchema, CollectionSchema MyCursorExtraEventsDefinition> {
+  ...
+}
+```
+
+These types ensure that `this._tryCatchEmit` correctly typeschcks the arguments for either the collection or cursor hooks and that `myCollection.on("customMethod")` works as you'd expect. You can see an example in `examples/simple/src/extended.ts`

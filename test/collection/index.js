@@ -18,8 +18,9 @@ import { defineFindOneAndReplace } from "./findOneAndReplace.js";
 import { defineFindOneAndDelete } from "./findOneAndDelete.js";
 import { defineChangeArgs } from "./changeArgs.js";
 import { defineInstrument } from "./instrument.js";
+import { defineExtendedTests } from "./extended.js";
 
-describe.only("collection", () => {
+describe("collection", () => {
   defineInsertOne();
   defineInsertMany();
   defineDeleteOne();
@@ -39,4 +40,5 @@ describe.only("collection", () => {
   defineFindOneAndDelete();
   defineChangeArgs();
   defineInstrument();
+  defineExtendedTests();
 });

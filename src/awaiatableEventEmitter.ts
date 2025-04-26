@@ -60,9 +60,12 @@ export type ChainedListenerCallback<
   K extends keyof EM,
 > = (
   EM[K]["callbackArgs"] extends object
-  ? (...args: [EM[K]["callbackArgs"]]) => EM[K]["isPromise"] extends false
-    ? EM[K]["returns"] | void
-    : EM[K]["returns"] | void | Promise<void | EM[K]["returns"]>
+  ? (...args: [EM[K]["callbackArgs"]]) => EM[K]["isPromise"] extends /* not */ true /* false */
+    // extends true is important - if we switch it to false anywhere we take a generic collection with unknown extended events
+    // (e.g., observe-mongo/redis/publish) the return type of the functions are all wrong - for whatever reason, swapping it fixes
+    // and doesn't cause the same issue with the handful of events that are sync
+    ? EM[K]["returns"] | void | Promise<void | EM[K]["returns"]>
+    : EM[K]["returns"] | void
   : never
 )
 
