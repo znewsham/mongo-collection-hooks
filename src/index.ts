@@ -25,5 +25,5 @@ export {
   HookedListenerCallback
 } from "./events/index.js";
 
-export { StandardInvokeHookOptions } from './awaiatableEventEmitter.js';
+export { StandardInvokeHookOptions, ChainedAwaiatableEventEmitter, ChainedCallbackEntry, ChainedCallbackEventMap, ChainedListenerCallback, CallbackAndOptionsOfEm } from './awaiatableEventEmitter.js';
 export { BulkWriteError } from "./bulkError.js";
