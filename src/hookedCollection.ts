@@ -756,7 +756,7 @@ export class HookedCollection<
       acknowledged: false,
       deletedCount: 0
     };
-    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection as NestedProjectionOfTSchema<TSchema>, isBeforeGreedy, invocationOptions?.signal);
+    const beforeDocumentCache = new DocumentCache(this.#collection, beforeProjection as NestedProjectionOfTSchema<TSchema>, isCacheWarmed, invocationOptions?.signal);
     const invocationSymbol = Symbol("delete");
     const attemptedIds: InferIdType<TSchema>[] = [];
 
@@ -768,7 +768,7 @@ export class HookedCollection<
         if (alwaysAttemptOperation) {
           attemptedIds.push(nextItem._id);
         }
-        if (isBeforeGreedy) {
+        if (isCacheWarmed) {
           beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
         }
         let chainedFilter: Filter<TSchema> | typeof SkipDocument = beforeEmitArgs.filter as Filter<TSchema>;

@@ -2,7 +2,6 @@ import { SkipDocument } from "mongo-collection-hooks";
 import { describe, it, mock } from "node:test";
 import assert from "node:assert";
 import { getHookedCollection, hookInParallel, hooksChain } from "./helpers.js";
-import { assertImplements } from "../helpers.js";
 
 export function deleteTests(oneOrMany) {
   describe("delete", () => {
@@ -66,8 +65,23 @@ export function deleteTests(oneOrMany) {
       hookedCollection.on("after.delete.success", afterDeleteMock);
 
       const result = await hookedCollection[oneOrMany]({ _id: "test" });
-      assert.strictEqual(afterDeleteMock.mock.callCount(), 0, "Should not call after.insert.success");
+      assert.strictEqual(afterDeleteMock.mock.callCount(), 0, "Should not call after.delete.success");
       assert.deepEqual(result, { deletedCount: 0, acknowledged: false });
+    });
+
+    it("Should correctly provide the previous document in the after hook", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
+      const afterDeleteMock = mock.fn();
+      hookedCollection.on("after.delete", afterDeleteMock, { fetchPrevious: true });
+      const result = await hookedCollection[oneOrMany]({ _id: "test" });
+      assert.strictEqual(afterDeleteMock.mock.callCount(), 1, "Should call after.delete");
+      assert.deepEqual(afterDeleteMock.mock.calls[0].arguments[0].previousDocument, { _id: "test" }, "Should call after.delete");
+      if (oneOrMany === "findOneAndDelete") {
+        assert.deepEqual(result, { value: { _id: "test" }, ok: 1 });
+      }
+      else {
+        assert.deepEqual(result, { deletedCount: 1, acknowledged: true });
+      }
     });
   });
 }
