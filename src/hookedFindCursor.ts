@@ -677,7 +677,7 @@ export class ExtendableHookedFindCursor<
       caller,
       args,
       // @ts-expect-error we're going to be opinionated that we shouldn't be passing in additional emit args
-      {},
+      { thisArg: this },
       beforeChainKey === undefined ? false : true,
       chainResults,
       beforeChainKey,
