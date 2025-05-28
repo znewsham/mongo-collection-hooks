@@ -54,6 +54,10 @@ export class HookedFindCursor<
     return this.#ee;
   }
 
+  project<T extends Document = Document>(value: Document): HookedFindCursor<T, CollectionSchema> {
+    return this.#cursor.project(value) as unknown as HookedFindCursor<T, CollectionSchema>;
+  }
+
 
   filter(filter: Filter<CollectionSchema>): this {
     this.#cursor.filter(filter);
@@ -337,12 +341,12 @@ export class HookedFindCursor<
     );
   }
 
-  map<T>(transform: (doc: TSchema) => T): HookedFindCursor<T> {
+  map<T>(transform: (doc: TSchema) => T): HookedFindCursor<T, CollectionSchema> {
     // this looks weird, but it means you'll get a transform for the first map, but not subsequent ones
     // because map just returns the cursor, `a.map(() => {}); a.map(() => {})` and `a.map(() => {}).map(() => {})` are equivalent
     const _transform = this.#transform;
     this.#transform = undefined;
-    return super.map<T>((doc) => transform(_transform ? _transform(doc) : doc)) as HookedFindCursor<T>;
+    return super.map<T>((doc) => transform(_transform ? _transform(doc) : doc)) as HookedFindCursor<T, CollectionSchema>;
   }
 
   async toArray(): Promise<TSchema[]> {
