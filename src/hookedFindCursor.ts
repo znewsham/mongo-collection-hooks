@@ -55,7 +55,8 @@ export class HookedFindCursor<
   }
 
   project<T extends Document = Document>(value: Document): HookedFindCursor<T, CollectionSchema> {
-    return this.#cursor.project(value) as unknown as HookedFindCursor<T, CollectionSchema>;
+    this.#cursor.project(value);
+    return this as unknown as HookedFindCursor<T, CollectionSchema>;
   }
 
 
