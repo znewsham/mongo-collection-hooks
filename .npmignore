@@ -7,3 +7,6 @@ examples
 __*
 legacy
 *.tgz
+lib/**/*.js.map
+es2020/**/*.js.map
+es2015/**/*.js.map
