@@ -246,10 +246,11 @@ export class ChainedAwaiatableEventEmitter<
 
   async callAwaitableChainWithKey<K extends keyof EM, CK extends string & keyof EM[K]["emitArgs"] & EM[K]["returnEmitName"]> (
     eventName: K,
-    emitArgs: EM[K]["emitArgs"],
+    emitArgs: Omit<EM[K]["emitArgs"], `${CK}Orig`>,
     chainKey: CK,
     options: StandardInvokeHookOptions<EM, K> | undefined,
   ): Promise<EM[K]["returns"]> {
+    // @ts-expect-error chainKey is valid, but externally we want to enforce that the *Orig isn't required, since we set it ourselves
     const origChainedValue = emitArgs[chainKey];
     return this.#callAwaitableChainWithKey(
       eventName,

@@ -67,6 +67,7 @@ export class HookedFindCursor<
   }
 
   addFilter(filter: Filter<CollectionSchema>) {
+    // @ts-expect-error I just can't with mongo's freaking types - it doesn't like something about WithId<Schema>
     return this.filter({
       $and: [this.#filter as Filter<CollectionSchema>, filter]
     });

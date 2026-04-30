@@ -3,7 +3,7 @@ import type{
   Document,
   OptionalUnlessRequiredId,
   WithId,
-  // Filter,
+  Filter as BaseMongoFilter,
   UpdateFilter,
   InsertManyResult,
   UpdateResult,
@@ -15,8 +15,6 @@ import type{
   InsertOneResult,
   ModifyResult,
   WriteError,
-  Condition,
-  RootFilterOperators
 } from 'mongodb';
 import { HookedFindCursor, HookedFindCursorOptions } from "./hookedFindCursor.js";
 
@@ -56,11 +54,6 @@ import { maybeParallel } from './maybeParallel.js';
 import { raceSignal } from './raceSignal.js';
 import { DocumentCache } from './documentCache.js';
 import { BeforeAfterCallbackArgsAndReturn, CommonDefinition, ExtractStandardBeforeAfterEventDefinitions, KeysMatching, Merge } from './events/helpersTypes.js';
-
-/** A MongoDB filter can be some portion of the schema or a set of operators @public */
-type Filter<TSchema> = {
-  [P in keyof WithId<TSchema>]?: Condition<WithId<TSchema>[P]>;
-} & RootFilterOperators<TSchema>;
 
 function notUndefined<TValue>(value: TValue | undefined): value is TValue {
   return value !== undefined;
@@ -233,7 +226,7 @@ export class HookedCollection<
       InternalEvents.distinct,
       { args: [key, filter, options] },
       "args",
-      ({ beforeHooksResult: [chainedKey, chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.distinct(chainedKey, chainedFilter as Filter<TSchema>, chainedOptions)),
+      ({ beforeHooksResult: [chainedKey, chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.distinct(chainedKey, chainedFilter as BaseMongoFilter<TSchema>, chainedOptions)),
       options
     );
   }
@@ -252,11 +245,11 @@ export class HookedCollection<
         "args",
         async ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => {
           if (chainedFilter && options) {
-            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter as Filter<TSchema>, chainedOptions));
+            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter as BaseMongoFilter<TSchema>, chainedOptions));
             return ret && this.#transform(ret);
           }
           if (chainedFilter) {
-            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter as Filter<TSchema>));
+            const ret = await raceSignal(options?.signal, this.#collection.findOne<T>(chainedFilter as BaseMongoFilter<TSchema>));
             return ret && this.#transform(ret);
           }
           const ret = await raceSignal(options?.signal, this.#collection.findOne<T>());
@@ -276,10 +269,10 @@ export class HookedCollection<
 
   #find<T extends Document = TSchema>(filter?: MaybeStrictFilter<TSchema>, options?: AmendedFindOptions<TSchema>): FindCursor<T> {
     if (filter && options) {
-      return this.#collection.find<T>(filter as Filter<TSchema>, options);
+      return this.#collection.find<T>(filter as BaseMongoFilter<TSchema>, options);
     }
     else if (filter) {
-      return this.#collection.find<T>(filter as Filter<TSchema>);
+      return this.#collection.find<T>(filter as BaseMongoFilter<TSchema>);
     }
     return this.#collection.find() as unknown as FindCursor<T>;
   }
@@ -761,7 +754,7 @@ export class HookedCollection<
         return null;
       }
     } : this.#collection.find<{ _id: any }>(
-      beforeEmitArgs.args[0] as Filter<TSchema>,
+      beforeEmitArgs.args[0] as BaseMongoFilter<TSchema>,
       {
         projection: isCacheWarmed ? beforeProjection : { _id: 1 },
         limit,
@@ -788,7 +781,7 @@ export class HookedCollection<
         if (isCacheWarmed) {
           beforeDocumentCache.setDocument(nextItem._id, nextItem as unknown as WithId<TSchema>);
         }
-        let chainedFilter: Filter<TSchema> | typeof SkipDocument = beforeEmitArgs.filter as Filter<TSchema>;
+        let chainedFilter: BaseMongoFilter<TSchema> | typeof SkipDocument = beforeEmitArgs.filter as BaseMongoFilter<TSchema>;
         try {
           chainedFilter = (await this.#ee.callExplicitAwaitableListenersChainWithKey(
             Events.before.delete,
@@ -802,7 +795,7 @@ export class HookedCollection<
             "filter",
             beforeListenersWithOptions,
             invocationOptions?.signal
-          )) as Filter<TSchema> | typeof SkipDocument;
+          )) as BaseMongoFilter<TSchema> | typeof SkipDocument;
         }
         catch (error) {
           return {
@@ -1015,7 +1008,7 @@ export class HookedCollection<
         return null;
       }
     } : this.#collection.find<{ _id: any }>(
-      beforeEmitArgs.args[0] as Filter<TSchema>,
+      beforeEmitArgs.args[0] as BaseMongoFilter<TSchema>,
       {
         projection: isCacheWarmed ? beforeProjection : { _id: 1 },
         limit
@@ -1044,19 +1037,19 @@ export class HookedCollection<
             if (caller === "replaceOne") {
               return {
                 type: "UpdateResult",
-                result: await raceSignal(invocationOptions?.signal, this.#collection.replaceOne(args[0] as Filter<TSchema>, args[1], args[2])) as UpdateResult<TSchema>
+                result: await raceSignal(invocationOptions?.signal, this.#collection.replaceOne(args[0] as BaseMongoFilter<TSchema>, args[1], args[2])) as UpdateResult<TSchema>
               };
             }
             else if (caller === "updateOne") {
               return {
                 type: "UpdateResult",
-                result: await raceSignal(invocationOptions?.signal, this.#collection.updateOne(args[0] as Filter<TSchema>, args[1], args[2]))
+                result: await raceSignal(invocationOptions?.signal, this.#collection.updateOne(args[0] as BaseMongoFilter<TSchema>, args[1], args[2]))
               };
             }
             else if (caller === "updateMany") {
               return {
                 type: "UpdateResult",
-                result: await raceSignal(invocationOptions?.signal, this.#collection.updateMany(args[0] as Filter<TSchema>, args[1], args[2]))
+                result: await raceSignal(invocationOptions?.signal, this.#collection.updateMany(args[0] as BaseMongoFilter<TSchema>, args[1], args[2]))
               };
             }
             else if (caller === "findOneAndUpdate") {
@@ -1065,18 +1058,18 @@ export class HookedCollection<
                 if (args[2].includeResultMetadata === false) {
                   return {
                     type: "Document",
-                    result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0] as Filter<TSchema>, args[1], { ...args[2], includeResultMetadata: false }))
+                    result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0] as BaseMongoFilter<TSchema>, args[1], { ...args[2], includeResultMetadata: false }))
                   };
                 }
                 return {
                   // CAREFUL - apparently this defaults to true NOW, but will default to false in a future release... fun
                   type: "ModifyResult",
-                  result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0] as Filter<TSchema>, args[1], args[2]))
+                  result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0] as BaseMongoFilter<TSchema>, args[1], args[2]))
                 };
               }
               return {
                 type: "ModifyResult",
-                result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0] as Filter<TSchema>, args[1]))
+                result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndUpdate(args[0] as BaseMongoFilter<TSchema>, args[1]))
               };
             }
             else if (caller === "findOneAndReplace") {
@@ -1085,18 +1078,18 @@ export class HookedCollection<
                 if (args[2].includeResultMetadata === false) {
                   return {
                     type: "Document",
-                    result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0] as Filter<TSchema>, args[1], { ...args[2], includeResultMetadata: false }))
+                    result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0] as BaseMongoFilter<TSchema>, args[1], { ...args[2], includeResultMetadata: false }))
                   };
                 }
                 return {
                   // CAREFUL - apparently this defaults to true NOW, but will default to false in a future release... fun
                   type: "ModifyResult",
-                  result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0] as Filter<TSchema>, args[1], args[2]))
+                  result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0] as BaseMongoFilter<TSchema>, args[1], args[2]))
                 };
               }
               return {
                 type: "ModifyResult",
-                result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0] as Filter<TSchema>, args[1]))
+                result: await raceSignal(invocationOptions?.signal, this.#collection.findOneAndReplace(args[0] as BaseMongoFilter<TSchema>, args[1]))
               };
             }
             throw new Error("Unrecognized caller");
@@ -1349,14 +1342,14 @@ export class HookedCollection<
                 type: "UpdateResult",
                 result: await raceSignal(options?.signal, this.#collection.replaceOne(
                   // @ts-expect-error
-                  chainedFilter?._id === _id ? chainedFilter as Filter<TSchema> : { $and: [chainedFilter as Filter<TSchema>, { _id }] },
+                  chainedFilter?._id === _id ? chainedFilter as BaseMongoFilter<TSchema> : { $and: [chainedFilter as BaseMongoFilter<TSchema>, { _id }] },
                   chainedReplacement as WithoutId<TSchema>,
                   args[2]
                 )) as UpdateResult // it's only a document when explain: true, and I can't see how to make that the case.
               };
             },
             async (attemptedIds) => {
-              let selector = args[0] as Filter<TSchema>;
+              let selector = args[0] as BaseMongoFilter<TSchema>;
               if (attemptedIds?.length) {
                 // @ts-expect-error
                 selector = {
@@ -1395,7 +1388,7 @@ export class HookedCollection<
     const wantsIds = [...beforeListenersWithOptions, ...afterListenersWithOptions, ...afterSuccessListenersWithOptions].filter(({ options: hookOptions }) => hookOptions?.["includeId"] || hookOptions?.["includeIds"] ).length;
     let ids: InferIdType<TSchema>[] | undefined;
     if (wantsIds) {
-      ids = (await raceSignal(options?.signal, this.#collection.find(filter as Filter<TSchema>, { projection: { _id: 1 }, ...(operation === "updateOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
+      ids = (await raceSignal(options?.signal, this.#collection.find(filter as BaseMongoFilter<TSchema>, { projection: { _id: 1 }, ...(operation === "updateOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
     }
     const argsOrig = [filter, mutator, options] as const;
     const invocationSymbol = Symbol(operation);
@@ -1467,7 +1460,7 @@ export class HookedCollection<
               }
             };
           }
-          let selector = chainedArgs[0] as Filter<TSchema>;
+          let selector = chainedArgs[0] as BaseMongoFilter<TSchema>;
           if (attemptedIds?.length) {
             if (selector._id) {
               // TODO: this'll work for primatives only
@@ -1587,7 +1580,7 @@ export class HookedCollection<
     let ids: InferIdType<TSchema>[] | undefined;
     if (wantsIds) {
       options?.signal?.throwIfAborted();
-      ids = (await raceSignal(options?.signal, this.#collection.find(filter as Filter<TSchema>, { projection: { _id: 1 }, ...(operation === "deleteOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
+      ids = (await raceSignal(options?.signal, this.#collection.find(filter as BaseMongoFilter<TSchema>, { projection: { _id: 1 }, ...(operation === "deleteOne" ? { limit: 1 } : {}) }).toArray())).map(({ _id }) => _id);
     }
     const argsOrig = [filter, options] as const;
     const invocationSymbol = Symbol(operation);
@@ -1638,7 +1631,7 @@ export class HookedCollection<
           };
         },
         async (attemptedIds) => {
-          let selector = chainedArgs[0] as Filter<TSchema>;
+          let selector = chainedArgs[0] as BaseMongoFilter<TSchema>;
           if (operation === "deleteOne" && attemptedIds?.length) {
             return {
               type: "DeleteResult",
@@ -1780,7 +1773,7 @@ export class HookedCollection<
           args: [filter, options]
         },
         "args",
-        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.count(chainedFilter as Filter<TSchema>, chainedOptions)),
+        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.count(chainedFilter as BaseMongoFilter<TSchema>, chainedOptions)),
         options,
         {
           event: InternalEvents["count*"],
@@ -1834,7 +1827,7 @@ export class HookedCollection<
           args: [filter, options]
         },
         "args",
-        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.countDocuments(chainedFilter as Filter<TSchema>, chainedOptions)),
+        ({ beforeHooksResult: [chainedFilter, chainedOptions] }) => raceSignal(chainedOptions?.signal, this.#collection.countDocuments(chainedFilter as BaseMongoFilter<TSchema>, chainedOptions)),
         options,
         {
           event: InternalEvents["count*"],
@@ -1902,7 +1895,7 @@ export class HookedCollection<
               if (chainedOptions) {
                 const result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndDelete(
                   // @ts-expect-error
-                  twiceChainedFilter?._id === _id ? twiceChainedFilter as Filter<TSchema> : { $and: [{ _id }, twiceChainedFilter as Filter<TSchema>] },
+                  twiceChainedFilter?._id === _id ? twiceChainedFilter as BaseMongoFilter<TSchema> : { $and: [{ _id }, twiceChainedFilter as BaseMongoFilter<TSchema>] },
                   chainedOptions
                 ));
 
@@ -1919,7 +1912,7 @@ export class HookedCollection<
               }
               const result = await this.#collection.findOneAndDelete(
                 // @ts-expect-error
-                twiceChainedFilter?._id === _id ? twiceChainedFilter as Filter<TSchema> : { $and: [{ _id }, twiceChainedFilter as Filter<TSchema>] }
+                twiceChainedFilter?._id === _id ? twiceChainedFilter as BaseMongoFilter<TSchema> : { $and: [{ _id }, twiceChainedFilter as BaseMongoFilter<TSchema>] }
               );
               result.value = result.value && this.#transform(result.value);
               return {
@@ -1930,7 +1923,7 @@ export class HookedCollection<
             async () => {
               let result: ModifyResult<TSchema> | WithId<TSchema> | null;
               if (chainedOptions) {
-                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndDelete(chainedFilter as Filter<TSchema>, chainedOptions));
+                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndDelete(chainedFilter as BaseMongoFilter<TSchema>, chainedOptions));
                 if (chainedOptions.includeResultMetadata === false) {
                   result = result && this.#transform(result);
                 }
@@ -1939,7 +1932,7 @@ export class HookedCollection<
                 }
               }
               else {
-                result = await this.#collection.findOneAndDelete(chainedFilter as Filter<TSchema>);
+                result = await this.#collection.findOneAndDelete(chainedFilter as BaseMongoFilter<TSchema>);
                 result.value = result.value && this.#transform(result.value);
               }
               return {
@@ -2029,7 +2022,7 @@ export class HookedCollection<
               if (chainedOptions) {
                 const result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndUpdate(
                   // @ts-expect-error
-                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as Filter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as Filter<TSchema>] },
+                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as BaseMongoFilter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as BaseMongoFilter<TSchema>] },
                   chainedFilterMutator.mutator,
                   chainedOptions
                 ));
@@ -2046,7 +2039,7 @@ export class HookedCollection<
               }
               const result = await this.#collection.findOneAndUpdate(
                 // @ts-expect-error
-                chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as Filter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as Filter<TSchema>] },
+                chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as BaseMongoFilter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as BaseMongoFilter<TSchema>] },
                 chainedFilterMutator.mutator
               );
               result.value = result.value && this.#transform(result.value);
@@ -2059,7 +2052,7 @@ export class HookedCollection<
             async () => {
               let result;
               if (chainedOptions) {
-                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndUpdate(chainedFilter as Filter<TSchema>, chainedUpdate, chainedOptions));
+                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndUpdate(chainedFilter as BaseMongoFilter<TSchema>, chainedUpdate, chainedOptions));
                 if (chainedOptions.includeResultMetadata === false) {
                   result = result && this.#transform(result);
                 }
@@ -2068,7 +2061,7 @@ export class HookedCollection<
                 }
               }
               else {
-                result = await this.#collection.findOneAndUpdate(chainedFilter as Filter<TSchema>, chainedUpdate);
+                result = await this.#collection.findOneAndUpdate(chainedFilter as BaseMongoFilter<TSchema>, chainedUpdate);
                 result.value = result.value && this.#transform(result.value);
               }
               return {
@@ -2158,7 +2151,7 @@ export class HookedCollection<
               if (chainedOptions) {
                 const result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndReplace(
                   // @ts-expect-error
-                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as Filter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as Filter<TSchema>] },
+                  chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as BaseMongoFilter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as BaseMongoFilter<TSchema>] },
                   chainedFilterMutator.replacement,
                   chainedOptions
                 ))
@@ -2175,7 +2168,7 @@ export class HookedCollection<
               }
               const result = await this.#collection.findOneAndReplace(
                 // @ts-expect-error
-                chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as Filter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as Filter<TSchema>] },
+                chainedFilterMutator.filter?._id === _id ? chainedFilterMutator.filter as BaseMongoFilter<TSchema> : { $and: [{ _id }, chainedFilterMutator.filter as BaseMongoFilter<TSchema>] },
                 chainedFilterMutator.replacement
               );
               result.value = result.value && this.#transform(result.value);
@@ -2188,7 +2181,7 @@ export class HookedCollection<
             async () => {
               let result;
               if (chainedOptions) {
-                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndReplace(chainedFilter as Filter<TSchema>, chainedReplacement, chainedOptions));
+                result = await raceSignal(chainedOptions?.signal, this.#collection.findOneAndReplace(chainedFilter as BaseMongoFilter<TSchema>, chainedReplacement, chainedOptions));
                 if (chainedOptions.includeResultMetadata === false) {
                   result = result && this.#transform(result);
                 }
@@ -2197,7 +2190,7 @@ export class HookedCollection<
                 }
               }
               else {
-                result = await this.#collection.findOneAndReplace(chainedFilter as Filter<TSchema>, chainedReplacement);
+                result = await this.#collection.findOneAndReplace(chainedFilter as BaseMongoFilter<TSchema>, chainedReplacement);
                 result.value = result.value && this.#transform(result.value);
               }
               return {
