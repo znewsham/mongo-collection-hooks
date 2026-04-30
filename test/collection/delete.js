@@ -69,6 +69,41 @@ export function deleteTests(oneOrMany) {
       assert.deepEqual(result, { deletedCount: 0, acknowledged: false });
     });
 
+    it("Should skip documents correctly when multiple hooks are chained, even if a later hook returns a non-SkipDocument value", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
+      const seenFilters = [];
+      hookedCollection.on("before.delete", ({ filter }) => {
+        seenFilters.push({ hook: "A", filter });
+        return { ...filter, a: 1 };
+      });
+      hookedCollection.on("before.delete", ({ filter }) => {
+        seenFilters.push({ hook: "B", filter });
+        return SkipDocument;
+      });
+      hookedCollection.on("before.delete", ({ filter, isSkipped }) => {
+        seenFilters.push({ hook: "C", filter, isSkipped });
+        return { ...filter, c: 1 };
+      });
+      hookedCollection.on("before.delete", ({ filter, isSkipped }) => {
+        seenFilters.push({ hook: "D", filter, isSkipped });
+      });
+      const afterDeleteMock = mock.fn();
+      hookedCollection.on("after.delete.success", afterDeleteMock);
+
+      const result = await hookedCollection[oneOrMany]({ _id: "test" });
+
+      assert.strictEqual(seenFilters.length, 4, "All four before.delete hooks should run");
+      assert.deepEqual(seenFilters[0].filter, { _id: "test" }, "Hook A receives the original filter");
+      assert.deepEqual(seenFilters[1].filter, { _id: "test", a: 1 }, "Hook B receives the filter returned by Hook A");
+      assert.deepEqual(seenFilters[2].filter, { _id: "test", a: 1 }, "Hook C must not receive SkipDocument; it receives the previous chained filter");
+      assert.deepEqual(seenFilters[3].filter, { _id: "test", a: 1, c: 1 }, "Hook D receives the filter returned by Hook C even though Hook B returned SkipDocument");
+      assert.deepEqual(seenFilters[2].isSkipped, true, "Hook C isSkipped");
+      assert.deepEqual(seenFilters[3].isSkipped, true, "Hook D isSkipped");
+
+      assert.strictEqual(afterDeleteMock.mock.callCount(), 0, "after.delete.success must not run when the document was skipped");
+      assert.deepEqual(result, { deletedCount: 0, acknowledged: false }, "The skip is respected even though a later hook returned a non-SkipDocument value");
+    });
+
     it("Should correctly provide the previous document in the after hook", async () => {
       const { hookedCollection } = getHookedCollection([{ _id: "test" }, { _id: "test2" }]);
       const afterDeleteMock = mock.fn();
@@ -82,6 +117,26 @@ export function deleteTests(oneOrMany) {
       else {
         assert.deepEqual(result, { deletedCount: 1, acknowledged: true });
       }
+    });
+
+    it("after.* hooks should fire (success and error) when no before.* hooks are present", async () => {
+      const perDocMethod = oneOrMany === "findOneAndDelete" ? "findOneAndDelete" : "deleteOne";
+
+      const { hookedCollection: hcOk } = getHookedCollection([{ _id: "test" }]);
+      const okAfterDelete = mock.fn();
+      hcOk.on("after.delete.success", okAfterDelete);
+      hcOk.on("after.delete.error", () => assert.fail("after.delete.error must not fire on success"));
+      await hcOk[oneOrMany]({ _id: "test" });
+      assert.strictEqual(okAfterDelete.mock.callCount(), 1, "after.delete.success fires without before hooks");
+
+      const { hookedCollection: hcErr, fakeCollection: fcErr } = getHookedCollection([{ _id: "test" }]);
+      mock.method(fcErr, perDocMethod, () => { throw new Error("BAD DELETE"); });
+      const errAfterDelete = mock.fn();
+      hcErr.on("after.delete.error", errAfterDelete);
+      hcErr.on("after.delete.success", () => assert.fail("after.delete.success must not fire on error"));
+      await assert.rejects(() => hcErr[oneOrMany]({ _id: "test" }));
+      assert.strictEqual(errAfterDelete.mock.callCount(), 1, "after.delete.error fires without before hooks");
+      assert.match(errAfterDelete.mock.calls[0].arguments[0].error.message, /BAD DELETE/);
     });
   });
 }

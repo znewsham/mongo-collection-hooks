@@ -395,7 +395,7 @@ export class HookedCollection<
     // TODO: this is a bit of a hack. It stops us getting typeerrors on things like findOne*
     OIE extends keyof CollectionOnlyBeforeAfterErrorEventDefinitions<TSchema> | keyof BeforeAfterErrorSharedEventDefinitions<TSchema>,
     EA extends HEM[BE]["emitArgs"],
-    OEA extends Omit<EA, "invocationSymbol" | "thisArg" | "signal">
+    OEA extends Omit<EA, "invocationSymbol" | "thisArg" | "signal" | `${(keyof OEA & HEM[BE]["returnEmitName"])}Orig`>
   >(
     internalEvent: IE,
     emitArgs: OEA,
@@ -505,6 +505,7 @@ export class HookedCollection<
             return raceSignal(chainedOptions?.signal, this.#collection.insertMany(chainedDocs, chainedOptions));
           }
           else {
+            const origChainedDocs = chainedDocs;
             const docMap = new Map<OptionalUnlessRequiredId<TSchema>, { invocationSymbol: symbol, doc: OptionalUnlessRequiredId<TSchema> | typeof SkipDocument }>();
             if (hasBefore) {
               chainedDocs = (await Promise.all(chainedDocs.map(async (doc, index) => {
@@ -551,20 +552,28 @@ export class HookedCollection<
               if (hasAfterError) {
                 // TODO: when ordered=true, some inserts may have succeeded.
                 // We'd need to determine the ones that did, call the success
-                await Promise.all(chainedDocs.map((docOrig, i) => {
-                  const { invocationSymbol, doc } = docMap.get(docOrig) || {};
-                  if (!doc || !invocationSymbol) {
-                    throw new Error("Impossible!");
+                await Promise.all(origChainedDocs.map((docOrig, i) => {
+                  let doc = docOrig;
+                  let invocationSymbol = Symbol("No Chained Symbol");
+                  if (hasBefore) {
+                    const { invocationSymbol: beforeSymbol, doc: beforeHookDoc } = docMap.get(docOrig) || {};
+                    if (!beforeHookDoc || !beforeSymbol) {
+                      throw new Error("Impossible!");
+                    }
+                    if (beforeHookDoc === SkipDocument) {
+                      return;
+                    }
+                    doc = beforeHookDoc;
+                    invocationSymbol = beforeSymbol;
                   }
-                  if (doc === SkipDocument) {
-                    return;
-                  }
+
                   this.#ee.callAllAwaitableInParallel(
                   {
                     args: [chainedDocs, chainedOptions],
                     argsOrig,
                     caller: "insertMany",
                     doc,
+                    docOrig,
                     signal: chainedOptions?.signal,
                     error: e,
                     invocationSymbol,
@@ -581,19 +590,26 @@ export class HookedCollection<
             }
             if (hasAfter) {
               const retToUse = await ret;
-              await Promise.all(chainedDocs.map((docOrig, i) => {
-                const { invocationSymbol, doc } = docMap.get(docOrig) || {};
-                if (!doc || !invocationSymbol) {
-                  throw new Error("Impossible!");
-                }
-                if (doc === SkipDocument) {
-                  return;
+              await Promise.all(origChainedDocs.map((docOrig, i) => {
+                let doc = docOrig;
+                let invocationSymbol = Symbol("No Chained Symbol");
+                if (hasBefore) {
+                  const { invocationSymbol: beforeSymbol, doc: beforeHookDoc } = docMap.get(docOrig) || {};
+                  if (!beforeHookDoc || !beforeSymbol) {
+                    throw new Error("Impossible!");
+                  }
+                  if (beforeHookDoc === SkipDocument) {
+                    return;
+                  }
+                  doc = beforeHookDoc;
+                  invocationSymbol = beforeSymbol;
                 }
                 return this.#ee.callAllAwaitableChainWithKey(
                   {
                     caller: "insertMany",
                     args: [chainedDocs, chainedOptions],
                     doc,
+                    docOrig,
                     signal: chainedOptions?.signal,
                     argsOrig: [chainedDocs, chainedOptions],
                     result: {

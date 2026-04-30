@@ -130,7 +130,11 @@ export function getTryCatch<
             ...(argsOrig && { argsOrig }),
             ...(result !== undefined && { result }),
             ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
-            ...beforeAfterEmitArgs
+            ...beforeAfterEmitArgs,
+            ...(chainArgsKey && chainArgsKey !== "args" ? {
+              [`${chainArgsKey}Orig`]: beforeAfterEmitArgs[chainArgsKey],
+              [chainArgsKey]: chainedArgs
+            } : {}),
           },
           "result",
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
@@ -153,7 +157,12 @@ export function getTryCatch<
             ...(argsOrig && { argsOrig }),
             ...(result !== undefined && { result }),
             ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
-            ...beforeAfterEmitArgs
+            ...beforeAfterEmitArgs,
+            ...(chainArgsKey && chainArgsKey !== "args" ? {
+              [`${chainArgsKey}Orig`]: beforeAfterEmitArgs[chainArgsKey],
+              [chainArgsKey]: chainedArgs
+            } : {}),
+
           },
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
           invocationOptions,
@@ -176,7 +185,11 @@ export function getTryCatch<
             ...(invocationOptions?.signal && { signal: invocationOptions?.signal }),
             error: e,
             thisArg: beforeAfterEmitArgs["thisArg"],
-            ...beforeAfterEmitArgs
+            ...beforeAfterEmitArgs,
+            ...(chainArgsKey && chainArgsKey !== "args" ? {
+              [`${chainArgsKey}Orig`]: beforeAfterEmitArgs[chainArgsKey],
+              [chainArgsKey]: chainedArgs
+            } : {}),
           },
           // @ts-expect-error there's an underlying assumption that the invocationOptions provided will work for the event and the additional events (e.g., before.cursor.execute and before.find.cursor.execute)
           invocationOptions,

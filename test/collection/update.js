@@ -81,6 +81,50 @@ export function updateTests(oneOrMany) {
         });
       }
     });
+
+    it("Should skip documents correctly when multiple hooks are chained, even if a later hook returns a non-SkipDocument value", async () => {
+      const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
+      const isReplace = oneOrMany.includes("eplace");
+      const callArgs = isReplace ? [{ _id: "test" }, { a: 1 }] : [{ _id: "test" }, { $set: { a: 1 } }];
+      const seenFilterMutators = [];
+      hookedCollection.on("before.update", ({ filterMutator }) => {
+        seenFilterMutators.push({ hook: "A", filterMutator });
+        return { ...filterMutator, filter: { ...filterMutator.filter, a: 1 } };
+      });
+      hookedCollection.on("before.update", ({ filterMutator }) => {
+        seenFilterMutators.push({ hook: "B", filterMutator });
+        return SkipDocument;
+      });
+      hookedCollection.on("before.update", ({ filterMutator, isSkipped }) => {
+        seenFilterMutators.push({ hook: "C", filterMutator, isSkipped });
+        return { ...filterMutator, filter: { ...filterMutator.filter, c: 1 } };
+      });
+      hookedCollection.on("before.update", ({ filterMutator, isSkipped }) => {
+        seenFilterMutators.push({ hook: "D", filterMutator, isSkipped });
+      });
+      const afterUpdateMock = mock.fn();
+      hookedCollection.on("after.update.success", afterUpdateMock);
+
+      const result = await hookedCollection[oneOrMany](...callArgs);
+
+      assert.strictEqual(seenFilterMutators.length, 4, "All four before.update hooks should run");
+      assert.deepEqual(seenFilterMutators[0].filterMutator.filter, { _id: "test" }, "Hook A receives the original filter");
+      assert.deepEqual(seenFilterMutators[1].filterMutator.filter, { _id: "test", a: 1 }, "Hook B receives the filter from Hook A");
+      assert.deepEqual(seenFilterMutators[2].filterMutator.filter, { _id: "test", a: 1 }, "Hook C must not receive SkipDocument; it receives the previous chained filterMutator");
+      assert.deepEqual(seenFilterMutators[3].filterMutator.filter, { _id: "test", a: 1, c: 1 }, "Hook D receives the filterMutator returned by Hook C even though Hook B returned SkipDocument");
+      assert.deepEqual(seenFilterMutators[2].isSkipped, true, "Hook C isSkipped");
+      assert.deepEqual(seenFilterMutators[3].isSkipped, true, "Hook D isSkipped");
+
+      assert.strictEqual(afterUpdateMock.mock.callCount(), 0, "after.update.success must not run when the document was skipped");
+      if (oneOrMany.startsWith("findOneAnd")) {
+        assert.deepEqual(result, { ok: 0, value: null }, "The skip is respected even though a later hook returned a non-SkipDocument value");
+      }
+      else {
+        assert.deepEqual(result, {
+          acknowledged: false, matchedCount: 1, modifiedCount: 0, upsertedCount: 0, upsertedId: null
+        }, "The skip is respected even though a later hook returned a non-SkipDocument value");
+      }
+    });
     it("Should greedily fetch the document if an after hook has fetchPrevious", async () => {
       const { hookedCollection } = getHookedCollection([{ _id: "test" }]);
       const afterUpdateMock = mock.fn();
@@ -148,6 +192,29 @@ export function updateTests(oneOrMany) {
           acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedCount: 0, upsertedId: null
         });
       }
+    });
+
+    it("after.* hooks should fire (success and error) when no before.* hooks are present", async () => {
+      const isReplace = oneOrMany.includes("eplace");
+      const isFindOneAnd = oneOrMany.startsWith("findOneAnd");
+      const perDocMethod = isFindOneAnd ? oneOrMany : (isReplace ? "replaceOne" : "updateOne");
+      const callArgs = isReplace ? [{ _id: "test" }, { a: 1 }] : [{ _id: "test" }, { $set: { a: 1 } }];
+
+      const { hookedCollection: hcOk } = getHookedCollection([{ _id: "test" }]);
+      const okAfterUpdate = mock.fn();
+      hcOk.on("after.update.success", okAfterUpdate);
+      hcOk.on("after.update.error", () => assert.fail("after.update.error must not fire on success"));
+      await hcOk[oneOrMany](...callArgs);
+      assert.strictEqual(okAfterUpdate.mock.callCount(), 1, "after.update.success fires without before hooks");
+
+      const { hookedCollection: hcErr, fakeCollection: fcErr } = getHookedCollection([{ _id: "test" }]);
+      mock.method(fcErr, perDocMethod, () => { throw new Error("BAD UPDATE"); });
+      const errAfterUpdate = mock.fn();
+      hcErr.on("after.update.error", errAfterUpdate);
+      hcErr.on("after.update.success", () => assert.fail("after.update.success must not fire on error"));
+      await assert.rejects(() => hcErr[oneOrMany](...callArgs));
+      assert.strictEqual(errAfterUpdate.mock.callCount(), 1, "after.update.error fires without before hooks");
+      assert.match(errAfterUpdate.mock.calls[0].arguments[0].error.message, /BAD UPDATE/);
     });
   });
 }

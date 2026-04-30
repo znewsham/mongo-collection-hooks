@@ -1,5 +1,8 @@
 
 /** These apply to all hooks */
+
+import { SkipDocument } from "./events/helpersTypes.js"
+
 /**
  * @external
  */
@@ -214,6 +217,7 @@ export class ChainedAwaiatableEventEmitter<
     } = emitArgs;
 
     let chainedValue = emitArgs[chainKey];
+    let isSkipped = false;
 
     for (const { listener, options: hookOptions } of listenersWithOptions) {
       if (signal?.aborted) {
@@ -223,12 +227,19 @@ export class ChainedAwaiatableEventEmitter<
         ...remainderOfEmitArgs,
         [chainKey]: chainedValue,
         [origKey]: origChainedValue,
+        ...(isSkipped ? { isSkipped: true } : {}),
         hookOptions
       };
       const listenerResult = await listener(perListenerArgs);
-      if (listenerResult !== undefined) {
+      if (listenerResult !== undefined && listenerResult !== SkipDocument) {
         chainedValue = listenerResult;
       }
+      if (listenerResult === SkipDocument) {
+        isSkipped = true;
+      }
+    }
+    if (isSkipped) {
+      return SkipDocument;
     }
     return chainedValue;
   }
@@ -288,6 +299,7 @@ export class ChainedAwaiatableEventEmitter<
     ...additionalEvents: ExtraEvent<EM, K>[]
   ): Promise<EM[K]["returns"]> {
     let chainedValue = emitArgs[chainKey];
+    let isSkipped = false;
     const origChainedValue = chainedValue;
     for (const eventNameOrObject of [masterEventName, ...additionalEvents]) {
       const eventName = (eventNameOrObject["event"] || eventNameOrObject) as K;
@@ -298,15 +310,22 @@ export class ChainedAwaiatableEventEmitter<
           ...emitArgs,
           ...extraEmitArgs,
           [chainKey]: chainedValue,
+          ...(isSkipped ? { isSkipped: true } : {})
         },
         chainKey,
         origChainedValue,
         this.relevantAwaitableListenersWithOptions(eventName, options),
         options?.signal
       );
-      if (chainedResult !== undefined) {
+      if (chainedResult !== undefined && chainedResult !== SkipDocument) {
         chainedValue = chainedResult;
       }
+      if (chainedResult === SkipDocument) {
+        isSkipped = true;
+      }
+    }
+    if (isSkipped) {
+      return SkipDocument;
     }
     return chainedValue;
   }

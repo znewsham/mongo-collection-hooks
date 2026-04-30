@@ -153,7 +153,8 @@ type UpdateCommon<TSchema extends Document> = {
       mutator?: UpdateFilter<TSchema> | Partial<TSchema>,
       /** In the case of replaceOne calls, this will be the provided replacement - mutex with mutator */
       replacement?: WithoutId<TSchema>
-    }
+    },
+    isSkipped?: true
   } & FullDocument,
   isPromise: true,
 }
@@ -206,7 +207,9 @@ type InsertCommon<TSchema extends Document> = {
   result: InsertOneResult<TSchema> | UpdateResult,
   custom: {
     /** The document to be inserted */
-    doc: OptionalUnlessRequiredId<TSchema>
+    doc: OptionalUnlessRequiredId<TSchema>,
+    docOrig: OptionalUnlessRequiredId<TSchema>,
+    isSkipped?: true
   },
   isPromise: true
 }
@@ -221,7 +224,8 @@ type DeleteCommon<TSchema extends Document> = {
     /** The ID of the document to be deleted */
     _id: InferIdType<TSchema>,
     /** The filter used to identify the document. Originally this will the main filter, but you can return a mutated version per document. It will be combined with the document ID for the final deletion */
-    filter: MaybeStrictFilter<TSchema>
+    filter: MaybeStrictFilter<TSchema>,
+    isSkipped?: true
   },
   isPromise: true
 }

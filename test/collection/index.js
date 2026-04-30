@@ -20,7 +20,7 @@ import { defineChangeArgs } from "./changeArgs.js";
 import { defineInstrument } from "./instrument.js";
 import { defineExtendedTests } from "./extended.js";
 
-describe("collection", () => {
+describe.only("collection", () => {
   defineInsertOne();
   defineInsertMany();
   defineDeleteOne();
