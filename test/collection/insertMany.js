@@ -6,7 +6,7 @@ import { assertImplements } from "../helpers.js";
 
 
 export function defineInsertMany() {
-  describe.only("insertMany", () => {
+  describe("insertMany", () => {
     it("should pass the options between before hooks correctly", async () => {
       const result = await hooksChain(
         "before.insertMany",
@@ -172,7 +172,7 @@ export function defineInsertMany() {
       assert.deepEqual(afterInsertMock.mock.calls[0].arguments[0].doc, { _id: "keepMe", a: 1, c: 1 }, "The non-skipped doc still flows through every transforming hook");
     });
 
-    it.only("after.* hooks should fire (success and error) when no before.* hooks are present", async () => {
+    it("after.* hooks should fire (success and error) when no before.* hooks are present", async () => {
       const { hookedCollection: hcOk } = getHookedCollection();
       const okAfterInsert = mock.fn();
       const okAfterInsertMany = mock.fn();
