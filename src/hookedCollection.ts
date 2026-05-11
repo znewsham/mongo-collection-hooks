@@ -545,7 +545,7 @@ export class HookedCollection<
               if (hasAfterError) {
                 // TODO: when ordered=true, some inserts may have succeeded.
                 // We'd need to determine the ones that did, call the success
-                await Promise.all(origChainedDocs.map((docOrig, i) => {
+                await Promise.all(origChainedDocs.map(async (docOrig, i) => {
                   let doc = docOrig;
                   let invocationSymbol = Symbol("No Chained Symbol");
                   if (hasBefore) {
@@ -560,23 +560,23 @@ export class HookedCollection<
                     invocationSymbol = beforeSymbol;
                   }
 
-                  this.#ee.callAllAwaitableInParallel(
-                  {
-                    args: [chainedDocs, chainedOptions],
-                    argsOrig,
-                    caller: "insertMany",
-                    doc,
-                    docOrig,
-                    signal: chainedOptions?.signal,
-                    error: e,
-                    invocationSymbol,
-                    parentInvocationSymbol,
-                    thisArg: this
-                  },
-                  undefined,
-                  Events.afterError.insert,
-                  Events.after.insert
-                );
+                  await this.#ee.callAllAwaitableInParallel(
+                    {
+                      args: [chainedDocs, chainedOptions],
+                      argsOrig,
+                      caller: "insertMany",
+                      doc,
+                      docOrig,
+                      signal: chainedOptions?.signal,
+                      error: e,
+                      invocationSymbol,
+                      parentInvocationSymbol,
+                      thisArg: this
+                    },
+                    undefined,
+                    Events.afterError.insert,
+                    Events.after.insert
+                  );
                 }));
               }
               throw e;
